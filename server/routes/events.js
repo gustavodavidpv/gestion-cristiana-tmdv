@@ -6,6 +6,10 @@ const { authenticate, authorize } = require('../middleware/auth');
 router.use(authenticate);
 
 router.get('/', eventController.getAll);
+
+// Calendario PDF mensual (DEBE ir ANTES de /:id para evitar conflicto de rutas)
+router.get('/calendar-pdf', eventController.generateCalendar);
+
 router.get('/:id', eventController.getById);
 
 // Crear eventos: Administrador, Secretaría, Líder

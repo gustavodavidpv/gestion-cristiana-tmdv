@@ -1,3 +1,15 @@
+/**
+ * index.js - Servidor principal Express
+ * 
+ * En PRODUCCIÓN:
+ *   - Sirve los archivos estáticos del build de React
+ *   - Cualquier ruta no-API devuelve index.html (SPA routing)
+ *   - Puerto definido por variable de entorno PORT (Render lo asigna)
+ * 
+ * En DESARROLLO:
+ *   - Solo sirve la API en puerto 5000
+ *   - React se ejecuta aparte en puerto 3000 con proxy
+ */
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -11,8 +23,14 @@ const PORT = process.env.PORT || 5000;
 // =============================================
 // MIDDLEWARE
 // =============================================
+
+// CORS: En producción no se necesita porque frontend y backend están en el mismo origen
+const corsOrigin = process.env.NODE_ENV === 'production'
+  ? false // Mismo servidor, no necesita CORS
+  : (process.env.CLIENT_URL || 'http://localhost:3000');
+
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  origin: corsOrigin,
   credentials: true,
 }));
 
@@ -23,30 +41,34 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 
 // =============================================
-// RUTAS
+// RUTAS API
 // =============================================
 app.use('/api', routes);
 
-// Ruta de salud
+// Ruta de salud (útil para health checks de Render)
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'OK',
     app: 'Gestión Cristiana - TMDV',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
+    env: process.env.NODE_ENV || 'development',
   });
 });
 
 // =============================================
-// FRONTEND (React build) en producción
+// PRODUCCIÓN: Servir React build
 // =============================================
+// En producción, el build de React está en ../client/build
+// El servidor Express sirve estos archivos estáticos
 if (process.env.NODE_ENV === 'production') {
   const clientBuildPath = path.join(__dirname, '..', 'client', 'build');
-
+  
   // Servir archivos estáticos del build
   app.use(express.static(clientBuildPath));
-
-  // SPA fallback: cualquier ruta que NO sea /api debe devolver index.html
+  
+  // Cualquier ruta que NO sea /api/* devuelve index.html
+  // Esto permite que React Router maneje las rutas del frontend
   app.get('*', (req, res) => {
     res.sendFile(path.join(clientBuildPath, 'index.html'));
   });
@@ -63,8 +85,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Ruta no encontrada (solo si NO es producción)
-// En producción ya responde el React fallback de arriba.
+// Ruta no encontrada (solo en desarrollo, en prod React maneja las rutas)
 if (process.env.NODE_ENV !== 'production') {
   app.use('*', (req, res) => {
     res.status(404).json({ message: 'Ruta no encontrada.' });

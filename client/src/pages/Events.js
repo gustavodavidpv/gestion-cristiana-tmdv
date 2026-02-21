@@ -24,6 +24,7 @@ import {
   People as PeopleIcon, Search as SearchIcon,
   CheckCircle as CheckIcon, Favorite as FavoriteIcon,
   Close as CloseIcon, SelectAll as SelectAllIcon,
+  CalendarMonth as CalendarIcon,
 } from '@mui/icons-material';
 
 const EVENT_TYPES = ['Evangelismo', 'Culto', 'Reunión', 'Jornada', 'Conferencia', 'Retiro', 'Otro'];
@@ -49,6 +50,12 @@ const Events = () => {
   const [attendeesList, setAttendeesList] = useState([]); // Lista de asistentes del evento
   const [memberSearch, setMemberSearch] = useState('');
   const [savingAttendees, setSavingAttendees] = useState(false);
+
+  // === Estado del modal de Calendario PDF ===
+  const [showCalendarModal, setShowCalendarModal] = useState(false);
+  const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
+  const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth() + 1);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   // ===== CARGA DE EVENTOS =====
   const loadEvents = useCallback(async (page = 0) => {
@@ -235,6 +242,48 @@ const Events = () => {
     }
   };
 
+  // ===== DESCARGA DE CALENDARIO PDF =====
+
+  /** Nombres de meses en español para el selector */
+  const MONTH_NAMES = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+  ];
+
+  /**
+   * Descarga el calendario PDF del mes seleccionado.
+   * Llama al endpoint GET /api/events/calendar-pdf?year=YYYY&month=MM
+   * y descarga el archivo PDF resultante.
+   */
+  const downloadCalendarPdf = async () => {
+    setDownloadingPdf(true);
+    try {
+      const response = await api.get('/events/calendar-pdf', {
+        params: { year: calendarYear, month: calendarMonth },
+        responseType: 'blob', // Importante: recibir como binario
+      });
+
+      // Crear un enlace temporal para descargar el blob
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Calendario_${MONTH_NAMES[calendarMonth - 1]}_${calendarYear}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.success(`Calendario de ${MONTH_NAMES[calendarMonth - 1]} ${calendarYear} descargado`);
+      setShowCalendarModal(false);
+    } catch (error) {
+      toast.error('Error al generar el calendario PDF');
+      console.error('Error descargando calendario:', error);
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
   // Filtro de búsqueda de miembros
   const filteredMembers = allMembers.filter((m) => {
     if (!memberSearch) return true;
@@ -255,9 +304,17 @@ const Events = () => {
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h5" fontWeight={700}>Eventos</Typography>
-        {hasRole('Administrador', 'Secretaría', 'Líder') && (
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openNew}>Nuevo Evento</Button>
-        )}
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          {/* Botón Calendario PDF */}
+          <Button variant="outlined" startIcon={<CalendarIcon />}
+            onClick={() => setShowCalendarModal(true)}
+            color="secondary">
+            Calendario PDF
+          </Button>
+          {hasRole('Administrador', 'Secretaría', 'Líder') && (
+            <Button variant="contained" startIcon={<AddIcon />} onClick={openNew}>Nuevo Evento</Button>
+          )}
+        </Box>
       </Box>
 
       {/* Tabla de eventos */}
@@ -479,6 +536,52 @@ const Events = () => {
             disabled={savingAttendees || attendeesList.length === 0}
             startIcon={savingAttendees ? <CircularProgress size={18} color="inherit" /> : <PeopleIcon />}>
             {savingAttendees ? 'Guardando...' : 'Guardar Asistencia'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ===== DIALOG SELECCIONAR MES PARA CALENDARIO PDF ===== */}
+      <Dialog open={showCalendarModal} onClose={() => setShowCalendarModal(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CalendarIcon color="secondary" />
+            Descargar Calendario PDF
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Seleccione el mes y año para generar el calendario de eventos en formato PDF.
+          </Typography>
+          <Grid container spacing={2}>
+            {/* Selector de Mes */}
+            <Grid item xs={7}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Mes</InputLabel>
+                <Select value={calendarMonth}
+                  onChange={(e) => setCalendarMonth(e.target.value)} label="Mes">
+                  {MONTH_NAMES.map((name, i) => (
+                    <MenuItem key={i + 1} value={i + 1}>{name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            {/* Selector de Año */}
+            <Grid item xs={5}>
+              <TextField fullWidth size="small" label="Año" type="number"
+                value={calendarYear}
+                onChange={(e) => setCalendarYear(parseInt(e.target.value))}
+                inputProps={{ min: 2020, max: 2040 }}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setShowCalendarModal(false)}>Cancelar</Button>
+          <Button variant="contained" color="secondary"
+            onClick={downloadCalendarPdf}
+            disabled={downloadingPdf}
+            startIcon={downloadingPdf ? <CircularProgress size={18} color="inherit" /> : <CalendarIcon />}>
+            {downloadingPdf ? 'Generando...' : 'Descargar PDF'}
           </Button>
         </DialogActions>
       </Dialog>

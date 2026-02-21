@@ -1,3 +1,12 @@
+/**
+ * database.js - Configuración de conexión a PostgreSQL
+ * 
+ * MODOS DE CONEXIÓN:
+ * 1. DATABASE_URL (producción): URL completa que provee Render/Heroku/Railway
+ *    Ejemplo: postgresql://user:pass@host:5432/dbname
+ * 2. Variables individuales (desarrollo local):
+ *    DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+ */
 const { Sequelize } = require('sequelize');
 require('dotenv').config();
 
@@ -38,7 +47,8 @@ const testConnection = async () => {
     await sequelize.authenticate();
     console.log('✅ Conexión a PostgreSQL establecida correctamente.');
   } catch (error) {
-    console.error('❌ No se pudo conectar a la base de datos:', error);
+    console.error('❌ Error en migraciones:', error);
+    console.error(error?.stack);
     process.exit(1);
   }
 };

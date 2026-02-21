@@ -2,6 +2,7 @@ const { Event, EventAttendee, Member, Church, User } = require('../models');
 const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { recalculateChurchFaithDecisions } = require('../utils/churchStats');
+const { generateCalendarPdf } = require('../utils/calendarPdf');
 
 const eventController = {
   // GET /api/events
@@ -233,6 +234,94 @@ const eventController = {
       }
       console.error('[ATTENDEES ERROR]', error);
       res.status(500).json({ message: 'Error al registrar asistentes.', error: error.message });
+    }
+  },
+
+  // =========== CALENDARIO PDF ===========
+
+  /**
+   * GET /api/events/calendar-pdf?year=2026&month=3
+   * 
+   * Genera y descarga un PDF con el calendario mensual de eventos.
+   * 
+   * Query params:
+   *   - year:  Año del calendario (ej: 2026)
+   *   - month: Mes del calendario (1-12)
+   * 
+   * El PDF muestra:
+   *   - Encabezado con nombre de la iglesia y mes/año
+   *   - Grilla tipo calendario (Dom-Sáb)
+   *   - Cada evento con hora de inicio, título y tipo (color)
+   *   - Leyenda de colores por tipo de evento
+   */
+  async generateCalendar(req, res) {
+    try {
+      const year = parseInt(req.query.year);
+      const month = parseInt(req.query.month);
+
+      // Validar parámetros
+      if (!year || !month || month < 1 || month > 12) {
+        return res.status(400).json({
+          message: 'Parámetros inválidos. Se requiere year (ej: 2026) y month (1-12).',
+        });
+      }
+
+      // Calcular rango de fechas del mes solicitado
+      const startDate = new Date(year, month - 1, 1);       // Primer día del mes
+      const endDate = new Date(year, month, 0, 23, 59, 59); // Último día del mes
+
+      // Filtrar por iglesia del usuario (excepto admin que ve todo)
+      const where = {
+        start_date: { [Op.between]: [startDate, endDate] },
+      };
+      if (req.user.role.name !== 'Administrador' && req.user.church_id) {
+        where.church_id = req.user.church_id;
+      }
+
+      // Obtener eventos del mes
+      const events = await Event.findAll({
+        where,
+        order: [['start_date', 'ASC']],
+        attributes: ['id', 'title', 'event_type', 'start_date', 'end_date', 'location'],
+      });
+
+      // Obtener nombre de la iglesia
+      let churchName = 'Gestión Cristiana TMDV';
+      if (req.user.church_id) {
+        const church = await Church.findByPk(req.user.church_id, {
+          attributes: ['name'],
+        });
+        if (church) churchName = church.name;
+      }
+
+      // Nombres de meses para el nombre del archivo
+      const monthNames = [
+        'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+      ];
+
+      // Configurar respuesta como PDF descargable
+      const fileName = `Calendario_${monthNames[month - 1]}_${year}.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+
+      // Generar el PDF y enviarlo como stream al response
+      const pdfDoc = generateCalendarPdf({
+        year,
+        month,
+        churchName,
+        events: events.map((e) => e.toJSON()), // Convertir a objetos planos
+      });
+
+      // pdfkit es un stream, lo conectamos directamente al response
+      pdfDoc.pipe(res);
+
+    } catch (error) {
+      console.error('[CALENDAR PDF ERROR]', error);
+      res.status(500).json({
+        message: 'Error al generar calendario PDF.',
+        error: error.message,
+      });
     }
   },
 };

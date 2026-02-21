@@ -151,8 +151,7 @@ const runMigrations = async () => {
 
     process.exit(0);
   } catch (error) {
-    console.error('❌ Error en migraciones:', error);
-    console.error(error?.stack);
+    console.error('❌ Error en migraciones:', error.message);
     process.exit(1);
   }
 };
