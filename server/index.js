@@ -38,6 +38,21 @@ app.get('/api/health', (req, res) => {
 });
 
 // =============================================
+// FRONTEND (React build) en producción
+// =============================================
+if (process.env.NODE_ENV === 'production') {
+  const clientBuildPath = path.join(__dirname, '..', 'client', 'build');
+
+  // Servir archivos estáticos del build
+  app.use(express.static(clientBuildPath));
+
+  // SPA fallback: cualquier ruta que NO sea /api debe devolver index.html
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(clientBuildPath, 'index.html'));
+  });
+}
+
+// =============================================
 // MANEJO DE ERRORES
 // =============================================
 app.use((err, req, res, next) => {
@@ -48,10 +63,13 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Ruta no encontrada
-app.use('*', (req, res) => {
-  res.status(404).json({ message: 'Ruta no encontrada.' });
-});
+// Ruta no encontrada (solo si NO es producción)
+// En producción ya responde el React fallback de arriba.
+if (process.env.NODE_ENV !== 'production') {
+  app.use('*', (req, res) => {
+    res.status(404).json({ message: 'Ruta no encontrada.' });
+  });
+}
 
 // =============================================
 // INICIAR SERVIDOR
