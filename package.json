@@ -8,9 +8,17 @@
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "install:all": "npm install && cd server && npm install && cd ../client && npm install",
     "db:migrate": "cd server && npm run migrate",
-    "db:seed": "cd server && npm run seed"
+    "db:seed": "cd server && npm run seed",
+
+    "-- PRODUCCIÓN --": "--- Scripts para deploy en Render ---",
+    "build": "cd client && npm install && npm run build",
+    "start": "cd server && node index.js",
+    "render:migrate": "cd server && node migrations/run.js"
   },
   "devDependencies": {
     "concurrently": "^8.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

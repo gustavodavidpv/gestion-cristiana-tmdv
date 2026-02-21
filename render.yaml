@@ -1,0 +1,48 @@
+# ===========================================
+# render.yaml - Blueprint de despliegue para Render.com
+# 
+# Este archivo permite desplegar la app completa con un solo clic:
+# - Web Service (Node.js + React build)
+# - PostgreSQL Database (1 GB gratis)
+#
+# Instrucciones:
+# 1. Sube el proyecto a GitHub
+# 2. Ve a https://render.com/deploy
+# 3. Conecta tu repo y listo
+# ===========================================
+
+databases:
+  # Base de datos PostgreSQL (tier gratuito)
+  - name: gestion-cristiana-db
+    databaseName: gestion_cristiana_tmdv
+    user: gestion_admin
+    plan: free
+    region: oregon
+
+services:
+  # Web Service (servidor Node.js + React build)
+  - type: web
+    name: gestion-cristiana-tmdv
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: "npm install && cd server && npm install && cd ../client && npm install && npm run build"
+    startCommand: "cd server && node migrations/run.js && node index.js"
+    healthCheckPath: /api/health
+    envVars:
+      # Conexión a la BD (se genera automáticamente al vincular la DB)
+      - key: DATABASE_URL
+        fromDatabase:
+          name: gestion-cristiana-db
+          property: connectionString
+      # Entorno de producción
+      - key: NODE_ENV
+        value: production
+      # Puerto (Render lo asigna automáticamente)
+      - key: PORT
+        value: 10000
+      # JWT Secret - CAMBIAR por algo seguro
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 24h
