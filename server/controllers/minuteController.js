@@ -1,4 +1,7 @@
-const { Minute, MinuteAttendee, Motion, MotionVoter, Member, Church, User } = require('../models');
+const { Minute, MinuteAttendee, MinuteFile, Motion, MotionVoter, Member, Church, User } = require('../models');
+const { applyTenantFilter } = require('../middleware/auth');
+const fs = require('fs');
+const path = require('path');
 
 const minuteController = {
   // GET /api/minutes
@@ -8,9 +11,8 @@ const minuteController = {
       const where = {};
 
       if (church_id) where.church_id = church_id;
-      if (req.user.role.name !== 'Administrador' && req.user.church_id) {
-        where.church_id = req.user.church_id;
-      }
+      // Tenant filtering: SuperAdmin ve todo, otros su iglesia
+      applyTenantFilter(where, req.user);
 
       const offset = (parseInt(page) - 1) * parseInt(limit);
 
@@ -19,6 +21,7 @@ const minuteController = {
         include: [
           { model: Church, as: 'church', attributes: ['id', 'name'] },
           { model: User, as: 'creator', attributes: ['id', 'full_name'] },
+          { model: MinuteFile, as: 'files', attributes: ['id', 'file_url', 'original_name', 'file_size'] },
         ],
         order: [['meeting_date', 'DESC']],
         limit: parseInt(limit),
@@ -61,6 +64,7 @@ const minuteController = {
             }],
             order: [['order_num', 'ASC']],
           },
+          { model: MinuteFile, as: 'files' },
         ],
       });
 
@@ -79,7 +83,6 @@ const minuteController = {
     try {
       const { title, objective, meeting_date, church_id, attendee_ids, motions } = req.body;
 
-      // Crear el acta
       const minute = await Minute.create({
         title,
         objective,
@@ -109,7 +112,6 @@ const minuteController = {
             order_num: i + 1,
           });
 
-          // Agregar votantes/secundadores
           if (m.voters && m.voters.length > 0) {
             const voterRecords = m.voters.map((v) => ({
               motion_id: motion.id,
@@ -121,23 +123,12 @@ const minuteController = {
         }
       }
 
-      // Obtener el acta completa
+      // Obtener acta completa
       const fullMinute = await Minute.findByPk(minute.id, {
         include: [
-          {
-            model: MinuteAttendee,
-            as: 'attendees',
-            include: [{ model: Member, as: 'member', attributes: ['id', 'first_name', 'last_name'] }],
-          },
-          {
-            model: Motion,
-            as: 'motions',
-            include: [{
-              model: MotionVoter,
-              as: 'voters',
-              include: [{ model: Member, as: 'member', attributes: ['id', 'first_name', 'last_name'] }],
-            }],
-          },
+          { model: MinuteAttendee, as: 'attendees', include: [{ model: Member, as: 'member', attributes: ['id', 'first_name', 'last_name'] }] },
+          { model: Motion, as: 'motions', include: [{ model: MotionVoter, as: 'voters', include: [{ model: Member, as: 'member', attributes: ['id', 'first_name', 'last_name'] }] }] },
+          { model: MinuteFile, as: 'files' },
         ],
       });
 
@@ -164,22 +155,70 @@ const minuteController = {
     }
   },
 
-  // POST /api/minutes/:id/upload
-  async uploadFile(req, res) {
+  // =========== ARCHIVOS (MULTI-FILE) ===========
+
+  /**
+   * POST /api/minutes/:id/upload
+   * Sube uno o varios archivos para una acta.
+   * req.files viene de multer (array mode).
+   */
+  async uploadFiles(req, res) {
     try {
       const minute = await Minute.findByPk(req.params.id);
       if (!minute) {
         return res.status(404).json({ message: 'Acta no encontrada.' });
       }
 
-      if (!req.file) {
+      if (!req.files || req.files.length === 0) {
         return res.status(400).json({ message: 'No se subió ningún archivo.' });
       }
 
-      await minute.update({ file_url: `/uploads/minutes/${req.file.filename}` });
-      res.json({ message: 'Archivo subido exitosamente.', file_url: minute.file_url });
+      // Crear registros de MinuteFile para cada archivo subido
+      const fileRecords = req.files.map((file) => ({
+        minute_id: minute.id,
+        file_url: `/uploads/minutes/${file.filename}`,
+        original_name: file.originalname,
+        file_size: file.size,
+        file_type: file.mimetype,
+      }));
+
+      const createdFiles = await MinuteFile.bulkCreate(fileRecords);
+
+      // Actualizar file_url del acta con el primer archivo (compatibilidad)
+      if (!minute.file_url && createdFiles.length > 0) {
+        await minute.update({ file_url: createdFiles[0].file_url });
+      }
+
+      res.json({
+        message: `${createdFiles.length} archivo(s) subido(s) exitosamente.`,
+        files: createdFiles,
+      });
     } catch (error) {
-      res.status(500).json({ message: 'Error al subir archivo.', error: error.message });
+      res.status(500).json({ message: 'Error al subir archivo(s).', error: error.message });
+    }
+  },
+
+  /**
+   * DELETE /api/minutes/:id/files/:fileId
+   * Elimina un archivo específico de una acta.
+   */
+  async deleteFile(req, res) {
+    try {
+      const file = await MinuteFile.findByPk(req.params.fileId);
+      if (!file || file.minute_id !== parseInt(req.params.id)) {
+        return res.status(404).json({ message: 'Archivo no encontrado.' });
+      }
+
+      // Eliminar archivo físico del disco
+      const filePath = path.join(__dirname, '..', 'public', file.file_url);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+
+      await file.destroy();
+      res.json({ message: 'Archivo eliminado exitosamente.' });
+    } catch (error) {
+      res.status(500).json({ message: 'Error al eliminar archivo.', error: error.message });
     }
   },
 
@@ -189,7 +228,17 @@ const minuteController = {
       const minute = await Minute.findByPk(req.params.id);
       if (!minute) return res.status(404).json({ message: 'Acta no encontrada.' });
 
+      // Eliminar archivos físicos
+      const files = await MinuteFile.findAll({ where: { minute_id: minute.id } });
+      for (const file of files) {
+        const filePath = path.join(__dirname, '..', 'public', file.file_url);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      }
+
       // Eliminar en cascada
+      await MinuteFile.destroy({ where: { minute_id: minute.id } });
       const motions = await Motion.findAll({ where: { minute_id: minute.id } });
       for (const motion of motions) {
         await MotionVoter.destroy({ where: { motion_id: motion.id } });

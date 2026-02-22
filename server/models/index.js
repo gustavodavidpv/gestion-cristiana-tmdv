@@ -12,6 +12,8 @@ const Minute = require('./Minute');
 const MinuteAttendee = require('./MinuteAttendee');
 const Motion = require('./Motion');
 const MotionVoter = require('./MotionVoter');
+const MinisterialPosition = require('./MinisterialPosition');
+const MinuteFile = require('./MinuteFile');
 
 // =============================================
 // ASOCIACIONES
@@ -81,6 +83,10 @@ MinuteAttendee.belongsTo(Minute, { foreignKey: 'minute_id', as: 'minute' });
 Member.hasMany(MinuteAttendee, { foreignKey: 'member_id', as: 'minute_attendances' });
 MinuteAttendee.belongsTo(Member, { foreignKey: 'member_id', as: 'member' });
 
+// Minute <-> MinuteFile (1:N - múltiples archivos por acta)
+Minute.hasMany(MinuteFile, { foreignKey: 'minute_id', as: 'files' });
+MinuteFile.belongsTo(Minute, { foreignKey: 'minute_id', as: 'minute' });
+
 // Minute <-> Motion
 Minute.hasMany(Motion, { foreignKey: 'minute_id', as: 'motions' });
 Motion.belongsTo(Minute, { foreignKey: 'minute_id', as: 'minute' });
@@ -90,6 +96,20 @@ Motion.hasMany(MotionVoter, { foreignKey: 'motion_id', as: 'voters' });
 MotionVoter.belongsTo(Motion, { foreignKey: 'motion_id', as: 'motion' });
 Member.hasMany(MotionVoter, { foreignKey: 'member_id', as: 'votes' });
 MotionVoter.belongsTo(Member, { foreignKey: 'member_id', as: 'member' });
+
+// =============================================
+// CARGOS MINISTERIALES (NUEVO)
+// =============================================
+
+// Church <-> MinisterialPosition (1:N)
+Church.hasMany(MinisterialPosition, { foreignKey: 'church_id', as: 'ministerial_positions' });
+MinisterialPosition.belongsTo(Church, { foreignKey: 'church_id', as: 'church' });
+
+// MinisterialPosition <-> Member (1:N)
+MinisterialPosition.hasMany(Member, { foreignKey: 'position_id', as: 'members', constraints: false, });
+Member.belongsTo(MinisterialPosition, { foreignKey: 'position_id', as: 'position',
+  constraints: false, // ✅ clave para que no toque constraints en sync alter 
+  });
 
 module.exports = {
   sequelize,
@@ -106,4 +126,6 @@ module.exports = {
   MinuteAttendee,
   Motion,
   MotionVoter,
+  MinisterialPosition,
+  MinuteFile,
 };

@@ -11,9 +11,15 @@ client/build/
 server/.env
 client/.env
 
-# Uploads del servidor
+# Uploads del servidor (ignorar archivos pero mantener estructura)
 server/public/uploads/*
 !server/public/uploads/.gitkeep
+!server/public/uploads/minutes/
+server/public/uploads/minutes/*
+!server/public/uploads/minutes/.gitkeep
+!server/public/uploads/logos/
+server/public/uploads/logos/*
+!server/public/uploads/logos/.gitkeep
 
 # Logs
 *.log

@@ -68,6 +68,24 @@ const Church = sequelize.define('Church', {
     defaultValue: 0,
     comment: 'Diáconos no ordenados',
   },
+  /**
+   * login_title - Título personalizado para la pantalla de login.
+   * Si está vacío, se usa el campo 'name'.
+   */
+  login_title: {
+    type: DataTypes.STRING(200),
+    allowNull: true,
+    comment: 'Título personalizado para pantalla de login',
+  },
+  /**
+   * login_logo_url - Ruta al logo de la iglesia para la pantalla de login.
+   * Se sube desde el módulo de branding (Admin/SuperAdmin).
+   */
+  login_logo_url: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+    comment: 'URL del logo para la pantalla de login',
+  },
 }, {
   tableName: 'churches',
 });

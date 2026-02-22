@@ -1,9 +1,10 @@
 /**
  * Sidebar.js - Navegación lateral con MUI Drawer
  * 
- * - En desktop (md+): Drawer permanente fijo a la izquierda
- * - En móvil (<md): Drawer temporal que se abre con menú hamburguesa
- * - Menú dinámico filtrado por rol del usuario
+ * CAMBIOS v2:
+ * - SuperAdmin ve todo (bypass en hasRole)
+ * - Nuevos menús: Cargos Ministeriales, Branding
+ * - Iglesia visible para Admin también (su propia iglesia)
  */
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
@@ -20,16 +21,22 @@ import {
   Description as DescriptionIcon,
   AdminPanelSettings as AdminIcon,
   Groups as GroupsIcon,
+  Badge as BadgeIcon,
+  Palette as PaletteIcon,
 } from '@mui/icons-material';
 
-/** Definición de menú con roles permitidos */
+/** Definición de menú con roles permitidos.
+ *  SuperAdmin ve todo (hasRole retorna true automáticamente).
+ */
 const menuItems = [
   { path: '/dashboard', icon: <DashboardIcon />, label: 'Dashboard', roles: ['Administrador', 'Secretaría', 'Líder', 'Visitante'] },
   { path: '/members', icon: <PeopleIcon />, label: 'Miembros', roles: ['Administrador', 'Secretaría', 'Líder', 'Visitante'] },
-  { path: '/churches', icon: <ChurchIcon />, label: 'Iglesia', roles: ['Administrador', 'Secretaría'] },
+  { path: '/churches', icon: <ChurchIcon />, label: 'Iglesias', roles: ['Administrador', 'Secretaría'] },
   { path: '/events', icon: <EventIcon />, label: 'Eventos', roles: ['Administrador', 'Secretaría', 'Líder'] },
   { path: '/attendance', icon: <GroupsIcon />, label: 'Asistencia', roles: ['Administrador', 'Secretaría', 'Líder'] },
   { path: '/minutes', icon: <DescriptionIcon />, label: 'Actas', roles: ['Administrador', 'Secretaría'] },
+  { path: '/positions', icon: <BadgeIcon />, label: 'Cargos', roles: ['Administrador'] },
+  { path: '/branding', icon: <PaletteIcon />, label: 'Branding', roles: ['Administrador'] },
   { path: '/users', icon: <AdminIcon />, label: 'Usuarios', roles: ['Administrador'] },
 ];
 
@@ -42,10 +49,9 @@ const Sidebar = ({ drawerWidth, mobileOpen, onClose, isMobile }) => {
     item.roles.some((role) => hasRole(role))
   );
 
-  /** Contenido del drawer (compartido entre móvil y desktop) */
   const drawerContent = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* Header con logo e identidad */}
+      {/* Header */}
       <Box sx={{
         p: 3, textAlign: 'center',
         background: 'linear-gradient(180deg, #0D47A1, #1a237e)',
@@ -109,7 +115,6 @@ const Sidebar = ({ drawerWidth, mobileOpen, onClose, isMobile }) => {
     </Box>
   );
 
-  // Estilos compartidos del drawer
   const drawerSx = {
     '& .MuiDrawer-paper': {
       width: drawerWidth,
@@ -122,14 +127,11 @@ const Sidebar = ({ drawerWidth, mobileOpen, onClose, isMobile }) => {
 
   return (
     <>
-      {/* Drawer TEMPORAL para móvil */}
       {isMobile && (
         <Drawer variant="temporary" open={mobileOpen} onClose={onClose} sx={drawerSx} ModalProps={{ keepMounted: true }}>
           {drawerContent}
         </Drawer>
       )}
-
-      {/* Drawer PERMANENTE para desktop */}
       {!isMobile && (
         <Drawer variant="permanent" open sx={drawerSx}>
           {drawerContent}

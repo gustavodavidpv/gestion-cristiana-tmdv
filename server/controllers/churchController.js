@@ -1,10 +1,20 @@
 const { Church, Mission, WhiteField, Member } = require('../models');
+const { isSuperAdmin } = require('../middleware/auth');
 
 const churchController = {
   // GET /api/churches
+  // SuperAdmin: lista todas. Admin: solo su iglesia.
   async getAll(req, res) {
     try {
+      const where = {};
+
+      // Admin solo ve su iglesia; SuperAdmin ve todas
+      if (!isSuperAdmin(req.user) && req.user.church_id) {
+        where.id = req.user.church_id;
+      }
+
       const churches = await Church.findAll({
+        where,
         order: [['name', 'ASC']],
       });
       res.json({ churches });
@@ -35,13 +45,18 @@ const churchController = {
         return res.status(404).json({ message: 'Iglesia no encontrada.' });
       }
 
+      // Admin solo puede ver su propia iglesia
+      if (!isSuperAdmin(req.user) && req.user.church_id !== church.id) {
+        return res.status(403).json({ message: 'No tienes acceso a esta iglesia.' });
+      }
+
       res.json({ church });
     } catch (error) {
       res.status(500).json({ message: 'Error al obtener iglesia.', error: error.message });
     }
   },
 
-  // POST /api/churches
+  // POST /api/churches — Solo SuperAdmin puede crear iglesias
   async create(req, res) {
     try {
       const church = await Church.create(req.body);
@@ -53,11 +68,8 @@ const churchController = {
 
   /**
    * PUT /api/churches/:id
-   * 
-   * IMPORTANTE: Los campos faith_decisions_year y faith_decisions_ref_year
-   * NO son editables manualmente desde la web. Se calculan automáticamente
-   * a partir de los datos de EventAttendees de los eventos de la iglesia.
-   * Por seguridad, se eliminan del payload antes de actualizar.
+   * Admin: solo su iglesia. SuperAdmin: cualquiera.
+   * Campos calculados se protegen (no editables manualmente).
    */
   async update(req, res) {
     try {
@@ -66,11 +78,12 @@ const churchController = {
         return res.status(404).json({ message: 'Iglesia no encontrada.' });
       }
 
-      // Proteger TODOS los campos calculados automáticamente.
-      // Estos se alimentan desde:
-      //   - faith_decisions: desde EventAttendees
-      //   - avg_weekly_attendance: desde WeeklyAttendance
-      //   - ordained/unordained preachers/deacons: desde Members.church_role
+      // Admin solo puede editar su propia iglesia
+      if (!isSuperAdmin(req.user) && req.user.church_id !== church.id) {
+        return res.status(403).json({ message: 'No tienes acceso a esta iglesia.' });
+      }
+
+      // Proteger campos calculados automáticamente
       const updateData = { ...req.body };
       delete updateData.faith_decisions_year;
       delete updateData.faith_decisions_ref_year;
@@ -79,7 +92,7 @@ const churchController = {
       delete updateData.unordained_preachers;
       delete updateData.ordained_deacons;
       delete updateData.unordained_deacons;
-      delete updateData.membership_count; // Calculado desde Members
+      delete updateData.membership_count;
 
       await church.update(updateData);
       res.json({ message: 'Iglesia actualizada exitosamente.', church });
@@ -88,7 +101,7 @@ const churchController = {
     }
   },
 
-  // DELETE /api/churches/:id
+  // DELETE /api/churches/:id — Solo SuperAdmin
   async delete(req, res) {
     try {
       const church = await Church.findByPk(req.params.id);
@@ -104,26 +117,19 @@ const churchController = {
   },
 
   // =========== MISIONES ===========
-
-  // POST /api/churches/:id/missions
   async createMission(req, res) {
     try {
-      const mission = await Mission.create({
-        ...req.body,
-        church_id: req.params.id,
-      });
+      const mission = await Mission.create({ ...req.body, church_id: req.params.id });
       res.status(201).json({ message: 'Misión creada exitosamente.', mission });
     } catch (error) {
       res.status(500).json({ message: 'Error al crear misión.', error: error.message });
     }
   },
 
-  // PUT /api/churches/:id/missions/:missionId
   async updateMission(req, res) {
     try {
       const mission = await Mission.findByPk(req.params.missionId);
       if (!mission) return res.status(404).json({ message: 'Misión no encontrada.' });
-
       await mission.update(req.body);
       res.json({ message: 'Misión actualizada.', mission });
     } catch (error) {
@@ -131,12 +137,10 @@ const churchController = {
     }
   },
 
-  // DELETE /api/churches/:id/missions/:missionId
   async deleteMission(req, res) {
     try {
       const mission = await Mission.findByPk(req.params.missionId);
       if (!mission) return res.status(404).json({ message: 'Misión no encontrada.' });
-
       await mission.destroy();
       res.json({ message: 'Misión eliminada.' });
     } catch (error) {
@@ -145,26 +149,19 @@ const churchController = {
   },
 
   // =========== CAMPOS BLANCOS ===========
-
-  // POST /api/churches/:id/white-fields
   async createWhiteField(req, res) {
     try {
-      const whiteField = await WhiteField.create({
-        ...req.body,
-        church_id: req.params.id,
-      });
+      const whiteField = await WhiteField.create({ ...req.body, church_id: req.params.id });
       res.status(201).json({ message: 'Campo blanco creado exitosamente.', whiteField });
     } catch (error) {
       res.status(500).json({ message: 'Error al crear campo blanco.', error: error.message });
     }
   },
 
-  // PUT /api/churches/:id/white-fields/:fieldId
   async updateWhiteField(req, res) {
     try {
       const field = await WhiteField.findByPk(req.params.fieldId);
       if (!field) return res.status(404).json({ message: 'Campo blanco no encontrado.' });
-
       await field.update(req.body);
       res.json({ message: 'Campo blanco actualizado.', whiteField: field });
     } catch (error) {
@@ -172,12 +169,10 @@ const churchController = {
     }
   },
 
-  // DELETE /api/churches/:id/white-fields/:fieldId
   async deleteWhiteField(req, res) {
     try {
       const field = await WhiteField.findByPk(req.params.fieldId);
       if (!field) return res.status(404).json({ message: 'Campo blanco no encontrado.' });
-
       await field.destroy();
       res.json({ message: 'Campo blanco eliminado.' });
     } catch (error) {
