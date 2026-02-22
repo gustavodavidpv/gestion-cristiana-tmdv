@@ -47,12 +47,21 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
+  /** Verifica si el usuario tiene alguno de los roles indicados */
   const hasRole = (...roles) => {
-    return user && user.role && roles.includes(user.role.name);
+    if (!user || !user.role) return false;
+    // SuperAdmin siempre tiene acceso (bypass)
+    if (user.role.name === 'SuperAdmin') return true;
+    return roles.includes(user.role.name);
+  };
+
+  /** Verifica si el usuario es SuperAdmin */
+  const isSuperAdmin = () => {
+    return user && user.role && user.role.name === 'SuperAdmin';
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, hasRole, loadUser }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, hasRole, isSuperAdmin, loadUser }}>
       {children}
     </AuthContext.Provider>
   );

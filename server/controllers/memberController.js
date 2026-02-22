@@ -1,18 +1,19 @@
-const { Member, Church } = require('../models');
+const { Member, Church, MinisterialPosition } = require('../models');
 const { Op } = require('sequelize');
 const { recalculateChurchRoleCounts, recalculateMembershipCount } = require('../utils/churchStats');
+const { isSuperAdmin, applyTenantFilter } = require('../middleware/auth');
 
 const memberController = {
   // GET /api/members?church_id=X&search=Y&member_type=Z&church_role=W
   async getAll(req, res) {
     try {
-      const { church_id, member_type, church_role, baptized, search, page = 1, limit = 20 } = req.query;
+      const { church_id, member_type, church_role, position_id, baptized, search, page = 1, limit = 20 } = req.query;
 
       const where = {};
       if (church_id) where.church_id = church_id;
       if (member_type) where.member_type = member_type;
-      // Filtro por cargo ministerial
       if (church_role) where.church_role = church_role;
+      if (position_id) where.position_id = position_id;
       if (baptized !== undefined) where.baptized = baptized === 'true';
       if (search) {
         where[Op.or] = [
@@ -22,16 +23,17 @@ const memberController = {
         ];
       }
 
-      // Si no es admin, filtrar por su iglesia
-      if (req.user.role.name !== 'Administrador' && req.user.church_id) {
-        where.church_id = req.user.church_id;
-      }
+      // Tenant filtering: SuperAdmin ve todo, otros su iglesia
+      applyTenantFilter(where, req.user);
 
       const offset = (parseInt(page) - 1) * parseInt(limit);
 
       const { rows: members, count: total } = await Member.findAndCountAll({
         where,
-        include: [{ model: Church, as: 'church', attributes: ['id', 'name'] }],
+        include: [
+          { model: Church, as: 'church', attributes: ['id', 'name'] },
+          { model: MinisterialPosition, as: 'position', attributes: ['id', 'name'] },
+        ],
         order: [['last_name', 'ASC'], ['first_name', 'ASC']],
         limit: parseInt(limit),
         offset,
@@ -55,7 +57,10 @@ const memberController = {
   async getById(req, res) {
     try {
       const member = await Member.findByPk(req.params.id, {
-        include: [{ model: Church, as: 'church', attributes: ['id', 'name'] }],
+        include: [
+          { model: Church, as: 'church', attributes: ['id', 'name'] },
+          { model: MinisterialPosition, as: 'position', attributes: ['id', 'name'] },
+        ],
       });
 
       if (!member) {
@@ -77,7 +82,7 @@ const memberController = {
     try {
       const {
         church_id, first_name, last_name, age, sex, birth_date,
-        baptized, member_type, church_role, phone, email, address,
+        baptized, member_type, church_role, position_id, phone, email, address,
       } = req.body;
 
       const member = await Member.create({
@@ -89,7 +94,8 @@ const memberController = {
         birth_date: birth_date || null,
         baptized,
         member_type,
-        church_role: church_role || null, // Normalizar vacío a null
+        church_role: church_role || null,
+        position_id: position_id || null,
         phone,
         email,
         address,
@@ -99,9 +105,7 @@ const memberController = {
       try {
         const church = await Church.findByPk(member.church_id);
         if (church) {
-          // Siempre recalcular membresía al crear
           await recalculateMembershipCount(church);
-          // Recalcular cargos si el miembro tiene cargo
           if (member.church_role) {
             await recalculateChurchRoleCounts(church);
           }
@@ -118,8 +122,7 @@ const memberController = {
 
   /**
    * PUT /api/members/:id
-   * Actualizar miembro. Si cambió church_role, recalcular contadores
-   * (puede afectar iglesia anterior y/o nueva si cambió de iglesia).
+   * Actualizar miembro. Si cambió church_role, recalcular contadores.
    */
   async update(req, res) {
     try {
@@ -128,32 +131,26 @@ const memberController = {
         return res.status(404).json({ message: 'Miembro no encontrado.' });
       }
 
-      // Guardar valores anteriores para saber si hay que recalcular
       const prevChurchId = member.church_id;
       const prevRole = member.church_role;
 
-      // Normalizar church_role vacío a null
       if (req.body.church_role === '') {
         req.body.church_role = null;
       }
 
       await member.update(req.body);
 
-      // Recalcular si cambió el cargo o la iglesia
       const roleChanged = prevRole !== member.church_role;
       const churchChanged = prevChurchId !== member.church_id;
 
       if (roleChanged || churchChanged) {
         try {
-          // Recalcular iglesia actual
           const currentChurch = await Church.findByPk(member.church_id);
           if (currentChurch) {
             await recalculateChurchRoleCounts(currentChurch);
-            // Si cambió de iglesia, también recalcular membresía
             if (churchChanged) await recalculateMembershipCount(currentChurch);
           }
 
-          // Si cambió de iglesia, también recalcular la anterior
           if (churchChanged && prevChurchId) {
             const prevChurch = await Church.findByPk(prevChurchId);
             if (prevChurch) {
@@ -174,8 +171,6 @@ const memberController = {
 
   /**
    * DELETE /api/members/:id
-   * Eliminar miembro. Recalcula membership_count siempre,
-   * y church_role counts si tenía cargo.
    */
   async delete(req, res) {
     try {
@@ -189,14 +184,11 @@ const memberController = {
 
       await member.destroy();
 
-      // Recalcular estadísticas de la iglesia
       if (churchId) {
         try {
           const church = await Church.findByPk(churchId);
           if (church) {
-            // Siempre recalcular membresía al eliminar
             await recalculateMembershipCount(church);
-            // Recalcular cargos si el miembro tenía cargo
             if (hadRole) await recalculateChurchRoleCounts(church);
           }
         } catch (statsErr) {

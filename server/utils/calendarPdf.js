@@ -1,14 +1,12 @@
 /**
  * calendarPdf.js - Generador de Calendario Mensual PDF
  * 
- * Genera un PDF en formato paisaje (landscape) con un calendario
- * mensual que muestra los eventos registrados en cada día.
- * 
- * Estilo similar a un calendario impreso:
- * - Encabezado con nombre de iglesia, mes y año
- * - Grilla de 7 columnas (Dom-Sáb) x semanas del mes
- * - Cada celda muestra: número del día + eventos con hora y título
- * - Colores por tipo de evento
+ * MEJORAS:
+ * - Soporte para eventos multi-día (2+ días):
+ *   Día 1: título + hora inicio
+ *   Días intermedios: título + "completo"
+ *   Último día: título + hora fin
+ * - Eventos de un solo día se muestran con hora inicio-fin
  * 
  * Dependencia: pdfkit (npm install pdfkit)
  */
@@ -29,10 +27,7 @@ const EVENT_COLORS = {
   'Otro':         { bg: '#F5F5F5', text: '#424242', border: '#BDBDBD' },
 };
 
-/** Nombres de los días (Domingo primero) */
 const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-
-/** Nombres de los meses en español */
 const MONTH_NAMES = [
   'ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
   'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE',
@@ -42,19 +37,9 @@ const MONTH_NAMES = [
 // FUNCIONES AUXILIARES
 // =============================================
 
-/**
- * Obtiene los datos de la grilla del calendario para un mes dado.
- * Retorna un array de semanas, donde cada semana tiene 7 slots (Dom-Sáb).
- * 
- * @param {number} year - Año (ej: 2026)
- * @param {number} month - Mes (1-12)
- * @returns {Array} Array de semanas [{day: number|null}, ...]
- */
 function getCalendarGrid(year, month) {
-  const firstDay = new Date(year, month - 1, 1);
-  const lastDay = new Date(year, month, 0); // Último día del mes
+  const lastDay = new Date(year, month, 0);
   const daysInMonth = lastDay.getDate();
-  const startDow = firstDay.getDay(); // 0=Dom, 1=Lun, etc. (perfecto, domingo primero)
 
   const weeks = [];
   let currentWeek = new Array(7).fill(null);
@@ -62,22 +47,14 @@ function getCalendarGrid(year, month) {
   for (let day = 1; day <= daysInMonth; day++) {
     const dow = new Date(year, month - 1, day).getDay();
     currentWeek[dow] = day;
-
-    // Si es sábado (6) o último día del mes, cerrar semana
     if (dow === 6 || day === daysInMonth) {
       weeks.push([...currentWeek]);
       currentWeek = new Array(7).fill(null);
     }
   }
-
   return weeks;
 }
 
-/**
- * Formatea una hora de un Date a "HH:MM"
- * @param {Date|string} date 
- * @returns {string} "HH:MM"
- */
 function formatTime(date) {
   const d = new Date(date);
   const h = d.getHours().toString().padStart(2, '0');
@@ -85,34 +62,105 @@ function formatTime(date) {
   return `${h}:${m}`;
 }
 
-/**
- * Trunca un texto si excede el máximo de caracteres
- * @param {string} text 
- * @param {number} max 
- * @returns {string}
- */
 function truncate(text, max) {
   if (!text) return '';
   return text.length > max ? text.substring(0, max - 1) + '…' : text;
+}
+
+/**
+ * Extrae solo la parte de fecha (sin hora) para comparar días.
+ * Esto evita problemas de zona horaria al segmentar por día.
+ */
+function toLocalDateStr(date) {
+  const d = new Date(date);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Expande un evento en "ocurrencias" por día para eventos multi-día.
+ * 
+ * Reglas:
+ * - Mismo día: { label: "HH:MM-HH:MM", dayType: 'single' }
+ * - Día 1 (inicio): { label: "HH:MM ▶", dayType: 'start' }
+ * - Días intermedios: { label: "completo", dayType: 'middle' }
+ * - Último día: { label: "▶ HH:MM", dayType: 'end' }
+ * 
+ * @param {Object} ev - Evento con start_date, end_date, title, event_type
+ * @param {number} year - Año del calendario
+ * @param {number} month - Mes del calendario (1-12)
+ * @returns {Array} Array de { day, label, title, event_type, dayType, sortTime }
+ */
+function expandEventToDays(ev, year, month) {
+  const start = new Date(ev.start_date);
+  const end = ev.end_date ? new Date(ev.end_date) : start;
+
+  // Extraer fechas sin hora para comparar días
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+
+  // Si start y end son el mismo día
+  const isSameDay = startDay.getTime() === endDay.getTime();
+
+  const occurrences = [];
+  const firstDayOfMonth = new Date(year, month - 1, 1);
+  const lastDayOfMonth = new Date(year, month, 0);
+
+  // Iterar cada día desde startDay hasta endDay
+  let current = new Date(Math.max(startDay.getTime(), firstDayOfMonth.getTime()));
+  const limit = new Date(Math.min(endDay.getTime(), lastDayOfMonth.getTime()));
+
+  while (current <= limit) {
+    const day = current.getDate();
+    const isFirstDay = current.getTime() === startDay.getTime();
+    const isLastDay = current.getTime() === endDay.getTime();
+
+    let label, dayType, sortTime;
+
+    if (isSameDay) {
+      // Evento de un solo día: mostrar hora inicio-fin
+      const startT = formatTime(start);
+      const endT = ev.end_date ? `-${formatTime(end)}` : '';
+      label = `${startT}${endT}`;
+      dayType = 'single';
+      sortTime = start.getHours() * 60 + start.getMinutes();
+    } else if (isFirstDay) {
+      // Primer día del evento multi-día
+      label = `${formatTime(start)} ▶`;
+      dayType = 'start';
+      sortTime = start.getHours() * 60 + start.getMinutes();
+    } else if (isLastDay) {
+      // Último día del evento multi-día
+      label = `▶ ${formatTime(end)}`;
+      dayType = 'end';
+      sortTime = 0; // Mostrar al inicio del día
+    } else {
+      // Día intermedio: todo el día
+      label = 'completo';
+      dayType = 'middle';
+      sortTime = 0;
+    }
+
+    occurrences.push({
+      day,
+      label,
+      title: ev.title,
+      event_type: ev.event_type,
+      dayType,
+      sortTime,
+    });
+
+    // Avanzar al siguiente día
+    current.setDate(current.getDate() + 1);
+  }
+
+  return occurrences;
 }
 
 // =============================================
 // FUNCIÓN PRINCIPAL: GENERAR PDF
 // =============================================
 
-/**
- * Genera un PDF de calendario mensual con los eventos.
- * 
- * @param {Object} options
- * @param {number} options.year - Año
- * @param {number} options.month - Mes (1-12)
- * @param {string} options.churchName - Nombre de la iglesia
- * @param {Array} options.events - Array de eventos del mes
- *   Cada evento: { title, event_type, start_date, end_date, location }
- * @returns {PDFDocument} Stream del PDF generado
- */
 function generateCalendarPdf({ year, month, churchName, events }) {
-  // Crear documento en landscape (Letter 11x8.5")
   const doc = new PDFDocument({
     size: 'LETTER',
     layout: 'landscape',
@@ -132,44 +180,26 @@ function generateCalendarPdf({ year, month, churchName, events }) {
   // =========================================
   // ENCABEZADO: Nombre iglesia + Mes/Año
   // =========================================
+  doc.rect(startX, startY, pageWidth, 50).fill('#0D47A1');
 
-  // Fondo del encabezado
-  doc.rect(startX, startY, pageWidth, 50)
-     .fill('#0D47A1');
-
-  // Nombre de la iglesia (izquierda)
-  doc.font('Helvetica-Bold')
-     .fontSize(14)
-     .fillColor('#FFFFFF')
+  doc.font('Helvetica-Bold').fontSize(14).fillColor('#FFFFFF')
      .text(churchName || 'Gestión Cristiana TMDV', startX + 15, startY + 8, {
-       width: pageWidth * 0.6,
-       align: 'left',
+       width: pageWidth * 0.6, align: 'left',
      });
 
-  // Subtítulo
-  doc.font('Helvetica')
-     .fontSize(9)
-     .fillColor('#B3D4FC')
+  doc.font('Helvetica').fontSize(9).fillColor('#B3D4FC')
      .text('Calendario de Eventos', startX + 15, startY + 28, {
-       width: pageWidth * 0.6,
-       align: 'left',
+       width: pageWidth * 0.6, align: 'left',
      });
 
-  // Mes y Año (derecha, grande)
-  doc.font('Helvetica-Bold')
-     .fontSize(26)
-     .fillColor('#FFFFFF')
+  doc.font('Helvetica-Bold').fontSize(26).fillColor('#FFFFFF')
      .text(MONTH_NAMES[month - 1], startX + pageWidth * 0.55, startY + 3, {
-       width: pageWidth * 0.4,
-       align: 'right',
+       width: pageWidth * 0.4, align: 'right',
      });
 
-  doc.font('Helvetica')
-     .fontSize(14)
-     .fillColor('#B3D4FC')
+  doc.font('Helvetica').fontSize(14).fillColor('#B3D4FC')
      .text(year.toString(), startX + pageWidth * 0.55, startY + 32, {
-       width: pageWidth * 0.4,
-       align: 'right',
+       width: pageWidth * 0.4, align: 'right',
      });
 
   // =========================================
@@ -181,21 +211,30 @@ function generateCalendarPdf({ year, month, churchName, events }) {
 
   DAY_NAMES.forEach((dayName, i) => {
     const x = startX + (i * colWidth);
-
-    // Fondo del día (domingo en color distinto)
     const bgColor = i === 0 ? '#1565C0' : '#1E88E5';
     doc.rect(x, headerY, colWidth, dayHeaderH).fill(bgColor);
-
-    // Borde derecho
     if (i < 6) {
       doc.rect(x + colWidth - 0.5, headerY, 0.5, dayHeaderH).fill('#0D47A1');
     }
-
-    // Texto del día
-    doc.font('Helvetica-Bold')
-       .fontSize(9)
-       .fillColor('#FFFFFF')
+    doc.font('Helvetica-Bold').fontSize(9).fillColor('#FFFFFF')
        .text(dayName, x, headerY + 6, { width: colWidth, align: 'center' });
+  });
+
+  // =========================================
+  // EXPANDIR EVENTOS MULTI-DÍA
+  // =========================================
+  const eventsByDay = {};
+  events.forEach((ev) => {
+    const occurrences = expandEventToDays(ev, year, month);
+    occurrences.forEach((occ) => {
+      if (!eventsByDay[occ.day]) eventsByDay[occ.day] = [];
+      eventsByDay[occ.day].push(occ);
+    });
+  });
+
+  // Ordenar eventos dentro de cada día por sortTime
+  Object.keys(eventsByDay).forEach((day) => {
+    eventsByDay[day].sort((a, b) => a.sortTime - b.sortTime);
   });
 
   // =========================================
@@ -205,27 +244,12 @@ function generateCalendarPdf({ year, month, churchName, events }) {
   const weeks = getCalendarGrid(year, month);
   const totalWeeks = weeks.length;
 
-  // Calcular la altura disponible para las filas
   const availableHeight = pageHeight - (gridStartY - startY) - 10;
-  const rowHeight = Math.min(availableHeight / totalWeeks, 105); // Máximo 105px por fila
+  const rowHeight = Math.min(availableHeight / totalWeeks, 105);
 
-  // Organizar eventos por día del mes
-  const eventsByDay = {};
-  events.forEach((ev) => {
-    const d = new Date(ev.start_date);
-    // Verificar que el evento pertenece al mes solicitado
-    if (d.getFullYear() === year && (d.getMonth() + 1) === month) {
-      const day = d.getDate();
-      if (!eventsByDay[day]) eventsByDay[day] = [];
-      eventsByDay[day].push(ev);
-    }
-  });
-
-  // Dibujar cada semana (fila)
   weeks.forEach((week, weekIndex) => {
     const rowY = gridStartY + (weekIndex * rowHeight);
 
-    // Dibujar cada día (celda)
     week.forEach((day, colIndex) => {
       const cellX = startX + (colIndex * colWidth);
 
@@ -234,118 +258,90 @@ function generateCalendarPdf({ year, month, churchName, events }) {
       const bgColor = day === null ? '#F0F0F0' : (isWeekend ? '#F5F8FF' : '#FFFFFF');
       doc.rect(cellX, rowY, colWidth, rowHeight).fill(bgColor);
 
-      // Bordes de la celda
+      // Bordes
       doc.rect(cellX, rowY, colWidth, rowHeight)
-         .strokeColor('#CCCCCC')
-         .lineWidth(0.5)
-         .stroke();
+         .strokeColor('#CCCCCC').lineWidth(0.5).stroke();
 
-      if (day === null) return; // Celda vacía (día fuera del mes)
+      if (day === null) return;
 
-      // Número del día (esquina superior izquierda)
-      const isToday = false; // No verificamos "hoy" porque es PDF estático
-      doc.font('Helvetica-Bold')
-         .fontSize(11)
-         .fillColor(colIndex === 0 ? '#C62828' : '#333333') // Domingos en rojo
+      // Número del día
+      doc.font('Helvetica-Bold').fontSize(11)
+         .fillColor(colIndex === 0 ? '#C62828' : '#333333')
          .text(day.toString(), cellX + 4, rowY + 3);
 
-      // =========================================
-      // EVENTOS DEL DÍA
-      // =========================================
+      // Eventos del día (expandidos)
       const dayEvents = eventsByDay[day] || [];
       if (dayEvents.length === 0) return;
 
-      // Ordenar eventos por hora de inicio
-      dayEvents.sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
-
-      const evStartY = rowY + 17; // Debajo del número del día
-      const maxEvents = Math.floor((rowHeight - 20) / 13); // Cuántos eventos caben
+      const evStartY = rowY + 17;
+      const maxEvents = Math.floor((rowHeight - 20) / 13);
       const eventsToShow = dayEvents.slice(0, maxEvents);
       const remaining = dayEvents.length - eventsToShow.length;
 
-      eventsToShow.forEach((ev, evIndex) => {
+      eventsToShow.forEach((occ, evIndex) => {
         const evY = evStartY + (evIndex * 13);
-        const colors = EVENT_COLORS[ev.event_type] || EVENT_COLORS['Otro'];
+        const colors = EVENT_COLORS[occ.event_type] || EVENT_COLORS['Otro'];
 
-        // Fondo del evento (pequeño rectángulo)
-        doc.roundedRect(cellX + 2, evY, colWidth - 4, 12, 2)
-           .fill(colors.bg);
+        // Fondo del evento
+        doc.roundedRect(cellX + 2, evY, colWidth - 4, 12, 2).fill(colors.bg);
 
-        // Línea izquierda de color (accent)
-        doc.rect(cellX + 2, evY, 2.5, 12)
-           .fill(colors.border);
+        // Línea izquierda de color (accent). Doble barra para multi-día
+        if (occ.dayType === 'middle') {
+          doc.rect(cellX + 2, evY, 2.5, 12).fill(colors.border);
+          doc.rect(cellX + 5, evY, 1, 12).fill(colors.border);
+        } else {
+          doc.rect(cellX + 2, evY, 2.5, 12).fill(colors.border);
+        }
 
-        // Hora de inicio
-        const timeStr = formatTime(ev.start_date);
-        doc.font('Helvetica-Bold')
-           .fontSize(6)
-           .fillColor(colors.text)
-           .text(timeStr, cellX + 6, evY + 1.5, { width: 26 });
+        // Label de hora/estado
+        doc.font('Helvetica-Bold').fontSize(5.5).fillColor(colors.text)
+           .text(occ.label, cellX + 6, evY + 2, { width: 36, lineBreak: false });
 
-        // Título del evento (truncado para caber)
-        const maxTitleChars = Math.floor((colWidth - 40) / 3.5);
-        const title = truncate(ev.title, maxTitleChars);
-        doc.font('Helvetica')
-           .fontSize(6)
-           .fillColor(colors.text)
-           .text(title, cellX + 32, evY + 1.5, {
-             width: colWidth - 36,
-             lineBreak: false,
+        // Título del evento (truncado)
+        const maxTitleChars = Math.floor((colWidth - 46) / 3.2);
+        const title = truncate(occ.title, maxTitleChars);
+        doc.font('Helvetica').fontSize(5.5).fillColor(colors.text)
+           .text(title, cellX + 40, evY + 2, {
+             width: colWidth - 44, lineBreak: false,
            });
       });
 
-      // Si hay más eventos que no caben, mostrar "+N más"
       if (remaining > 0) {
         const moreY = evStartY + (eventsToShow.length * 13);
-        doc.font('Helvetica-Bold')
-           .fontSize(6)
-           .fillColor('#666666')
+        doc.font('Helvetica-Bold').fontSize(6).fillColor('#666666')
            .text(`+${remaining} más...`, cellX + 4, moreY + 1, {
-             width: colWidth - 8,
-             align: 'center',
+             width: colWidth - 8, align: 'center',
            });
       }
     });
   });
 
   // =========================================
-  // PIE DE PÁGINA
+  // PIE DE PÁGINA: Leyenda
   // =========================================
   const footerY = gridStartY + (totalWeeks * rowHeight) + 8;
 
-  // Leyenda de colores
-  doc.font('Helvetica')
-     .fontSize(7)
-     .fillColor('#666666')
+  doc.font('Helvetica').fontSize(7).fillColor('#666666')
      .text('Leyenda:', startX, footerY);
 
   let legendX = startX + 45;
   Object.entries(EVENT_COLORS).forEach(([type, colors]) => {
-    // Rectángulo de color
     doc.roundedRect(legendX, footerY - 1, 8, 8, 1).fill(colors.border);
-    // Texto
-    doc.font('Helvetica')
-       .fontSize(6.5)
-       .fillColor('#555')
+    doc.font('Helvetica').fontSize(6.5).fillColor('#555')
        .text(type, legendX + 11, footerY, { lineBreak: false });
     legendX += type.length * 4.5 + 20;
   });
 
-  // Fecha de generación (derecha)
   const now = new Date();
   const genDate = now.toLocaleDateString('es-ES', {
     year: 'numeric', month: 'long', day: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
-  doc.font('Helvetica')
-     .fontSize(6.5)
-     .fillColor('#999')
+  doc.font('Helvetica').fontSize(6.5).fillColor('#999')
      .text(`Generado: ${genDate}`, startX, footerY, {
-       width: pageWidth,
-       align: 'right',
+       width: pageWidth, align: 'right',
      });
 
-  // Finalizar el documento
   doc.end();
   return doc;
 }

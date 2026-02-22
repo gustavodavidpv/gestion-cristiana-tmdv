@@ -59,8 +59,9 @@ const Member = sequelize.define('Member', {
     },
   },
   /**
-   * church_role - Cargo ministerial del miembro (OPCIONAL)
+   * church_role - Cargo ministerial del miembro (LEGACY - texto libre)
    * 
+   * Se mantiene por compatibilidad. Para nuevos registros usar position_id.
    * Valores posibles:
    * - null: Sin cargo especial
    * - 'Predicador Ordenado'
@@ -80,7 +81,22 @@ const Member = sequelize.define('Member', {
     validate: {
       isIn: [[null, '', 'Predicador Ordenado', 'Predicador No Ordenado', 'Diácono Ordenado', 'Diácono No Ordenado']],
     },
-    comment: 'Cargo ministerial opcional del miembro',
+    comment: 'Cargo ministerial legacy (texto). Usar position_id para nuevos.',
+  },
+  /**
+   * position_id - FK a ministerial_positions (NUEVO, escalable)
+   * 
+   * Referencia al cargo ministerial definido por la iglesia.
+   * Coexiste con church_role para backfill.
+   */
+  position_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: null,
+    // NO poner references aquí — Sequelize genera SQL inválido en ALTER.
+    // La FK se crea manualmente en migrations/run.js y la asociación
+    // se define en models/index.js (Member.belongsTo MinisterialPosition).
+    comment: 'FK al cargo ministerial de la iglesia (nuevo sistema escalable)',
   },
   phone: {
     type: DataTypes.STRING(30),

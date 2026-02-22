@@ -3,6 +3,7 @@ const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { recalculateChurchFaithDecisions } = require('../utils/churchStats');
 const { generateCalendarPdf } = require('../utils/calendarPdf');
+const { isSuperAdmin, applyTenantFilter } = require('../middleware/auth');
 
 const eventController = {
   // GET /api/events
@@ -18,10 +19,8 @@ const eventController = {
         where.start_date = { [Op.between]: [start_date, end_date] };
       }
 
-      // Los no-administradores solo ven eventos de su iglesia
-      if (req.user.role.name !== 'Administrador' && req.user.church_id) {
-        where.church_id = req.user.church_id;
-      }
+      // Tenant filtering: SuperAdmin ve todo, otros su iglesia
+      applyTenantFilter(where, req.user);
 
       const offset = (parseInt(page) - 1) * parseInt(limit);
 
@@ -51,7 +50,6 @@ const eventController = {
   },
 
   // GET /api/events/:id
-  // Detalle de un evento con sus asistentes y datos del miembro
   async getById(req, res) {
     try {
       const event = await Event.findByPk(req.params.id, {
@@ -77,7 +75,6 @@ const eventController = {
   },
 
   // POST /api/events
-  // Crear un nuevo evento
   async create(req, res) {
     try {
       const event = await Event.create({
@@ -93,7 +90,6 @@ const eventController = {
   },
 
   // PUT /api/events/:id
-  // Actualizar datos básicos del evento (no asistentes)
   async update(req, res) {
     try {
       const event = await Event.findByPk(req.params.id);
@@ -109,19 +105,15 @@ const eventController = {
   },
 
   // DELETE /api/events/:id
-  // Eliminar evento y recalcular estadísticas de la iglesia
   async delete(req, res) {
     try {
       const event = await Event.findByPk(req.params.id);
       if (!event) return res.status(404).json({ message: 'Evento no encontrado.' });
 
       const churchId = event.church_id;
-
-      // Eliminar asistentes asociados primero (por seguridad, aunque cascade lo haría)
       await EventAttendee.destroy({ where: { event_id: event.id } });
       await event.destroy();
 
-      // Recalcular decisiones de fe de la iglesia tras eliminar el evento
       if (churchId) {
         const church = await Church.findByPk(churchId);
         if (church) {
@@ -139,45 +131,29 @@ const eventController = {
 
   /**
    * POST /api/events/:id/attendees
-   * 
-   * ESTRATEGIA DE REEMPLAZO COMPLETO (fix del bug de duplicados):
-   * 
-   * 1. Se usa una TRANSACCIÓN para garantizar integridad
-   * 2. Se ELIMINAN todos los asistentes previos del evento
-   * 3. Se INSERTAN los nuevos asistentes (ya deduplicados por member_id)
-   * 4. Se recalculan los contadores del evento
-   * 5. Se recalculan las decisiones de fe de la iglesia
-   * 
-   * Esto evita:
-   * - Duplicados (el frontend envía la lista completa, no incremental)
-   * - Errores de updateOnDuplicate que fallaban sin índice único
-   * - Inconsistencias en los contadores
+   * REPLACE strategy: delete all + insert con transacción.
    */
   async addAttendees(req, res) {
-    // Iniciar transacción para garantizar integridad de datos
     const transaction = await sequelize.transaction();
 
     try {
       const eventId = parseInt(req.params.id);
-      const { attendees } = req.body; // Array: [{ member_id, attended, made_faith_decision, notes }]
+      const { attendees } = req.body;
 
-      // Validar que el evento existe
       const event = await Event.findByPk(eventId, { transaction });
       if (!event) {
         await transaction.rollback();
         return res.status(404).json({ message: 'Evento no encontrado.' });
       }
 
-      // Validar que se recibieron asistentes
       if (!attendees || !Array.isArray(attendees) || attendees.length === 0) {
         await transaction.rollback();
         return res.status(400).json({ message: 'Debe proporcionar al menos un asistente.' });
       }
 
-      // PASO 1: Deduplicar por member_id en caso de que el frontend envíe duplicados
+      // Deduplicar por member_id
       const uniqueMap = new Map();
       attendees.forEach((a) => {
-        // Si hay duplicados, el último gana (sobrescribe)
         uniqueMap.set(a.member_id, {
           event_id: eventId,
           member_id: a.member_id,
@@ -188,16 +164,10 @@ const eventController = {
       });
       const uniqueRecords = Array.from(uniqueMap.values());
 
-      // PASO 2: Eliminar todos los asistentes previos de este evento
-      await EventAttendee.destroy({
-        where: { event_id: eventId },
-        transaction,
-      });
-
-      // PASO 3: Insertar los nuevos registros (ya deduplicados)
+      // Eliminar + Insertar
+      await EventAttendee.destroy({ where: { event_id: eventId }, transaction });
       await EventAttendee.bulkCreate(uniqueRecords, { transaction });
 
-      // PASO 4: Recalcular contadores del evento
       const totalAttendees = uniqueRecords.filter((r) => r.attended).length;
       const totalFaithDecisions = uniqueRecords.filter((r) => r.made_faith_decision).length;
 
@@ -206,19 +176,15 @@ const eventController = {
         faith_decisions: totalFaithDecisions,
       }, { transaction });
 
-      // Confirmar transacción antes de recalcular la iglesia
       await transaction.commit();
 
-      // PASO 5: Recalcular decisiones de fe de la iglesia (fuera de transacción)
+      // Recalcular stats de iglesia
       if (event.church_id) {
         try {
           const church = await Church.findByPk(event.church_id);
-          if (church) {
-            await recalculateChurchFaithDecisions(church);
-          }
+          if (church) await recalculateChurchFaithDecisions(church);
         } catch (statsError) {
-          // Si falla el recálculo de stats, no afecta los asistentes guardados
-          console.error('[STATS] Error recalculando stats de iglesia:', statsError.message);
+          console.error('[STATS] Error recalculando stats:', statsError.message);
         }
       }
 
@@ -228,10 +194,7 @@ const eventController = {
         faith_decisions: totalFaithDecisions,
       });
     } catch (error) {
-      // Rollback si hubo error durante la transacción
-      if (!transaction.finished) {
-        await transaction.rollback();
-      }
+      if (!transaction.finished) await transaction.rollback();
       console.error('[ATTENDEES ERROR]', error);
       res.status(500).json({ message: 'Error al registrar asistentes.', error: error.message });
     }
@@ -242,43 +205,59 @@ const eventController = {
   /**
    * GET /api/events/calendar-pdf?year=2026&month=3
    * 
-   * Genera y descarga un PDF con el calendario mensual de eventos.
-   * 
-   * Query params:
-   *   - year:  Año del calendario (ej: 2026)
-   *   - month: Mes del calendario (1-12)
-   * 
-   * El PDF muestra:
-   *   - Encabezado con nombre de la iglesia y mes/año
-   *   - Grilla tipo calendario (Dom-Sáb)
-   *   - Cada evento con hora de inicio, título y tipo (color)
-   *   - Leyenda de colores por tipo de evento
+   * Genera PDF con calendario mensual.
+   * MEJORA: Busca eventos que SOLAPAN el mes (no solo los que empiezan).
+   * Esto captura eventos multi-día que comienzan antes o terminan después.
    */
   async generateCalendar(req, res) {
     try {
       const year = parseInt(req.query.year);
       const month = parseInt(req.query.month);
 
-      // Validar parámetros
       if (!year || !month || month < 1 || month > 12) {
         return res.status(400).json({
           message: 'Parámetros inválidos. Se requiere year (ej: 2026) y month (1-12).',
         });
       }
 
-      // Calcular rango de fechas del mes solicitado
-      const startDate = new Date(year, month - 1, 1);       // Primer día del mes
-      const endDate = new Date(year, month, 0, 23, 59, 59); // Último día del mes
+      // Rango del mes
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 0, 23, 59, 59);
 
-      // Filtrar por iglesia del usuario (excepto admin que ve todo)
+      // Buscar eventos que SOLAPAN el mes:
+      // Un evento solapa si: start_date <= fin_del_mes AND (end_date >= inicio_del_mes OR end_date IS NULL)
       const where = {
-        start_date: { [Op.between]: [startDate, endDate] },
+        [Op.and]: [
+          { start_date: { [Op.lte]: endDate } },
+          {
+            [Op.or]: [
+              { end_date: { [Op.gte]: startDate } },
+              { end_date: null },
+            ],
+          },
+        ],
       };
-      if (req.user.role.name !== 'Administrador' && req.user.church_id) {
-        where.church_id = req.user.church_id;
-      }
 
-      // Obtener eventos del mes
+      // Para eventos sin end_date, solo incluir si start_date está en el mes
+      // Refinamos: si end_date es null, el evento debe empezar en el mes
+      where[Op.and] = [
+        { start_date: { [Op.lte]: endDate } },
+        {
+          [Op.or]: [
+            { end_date: { [Op.gte]: startDate } },
+            {
+              [Op.and]: [
+                { end_date: null },
+                { start_date: { [Op.gte]: startDate } },
+              ],
+            },
+          ],
+        },
+      ];
+
+      // Tenant filtering
+      applyTenantFilter(where, req.user);
+
       const events = await Event.findAll({
         where,
         order: [['start_date', 'ASC']],
@@ -288,40 +267,31 @@ const eventController = {
       // Obtener nombre de la iglesia
       let churchName = 'Gestión Cristiana TMDV';
       if (req.user.church_id) {
-        const church = await Church.findByPk(req.user.church_id, {
-          attributes: ['name'],
-        });
+        const church = await Church.findByPk(req.user.church_id, { attributes: ['name'] });
         if (church) churchName = church.name;
       }
 
-      // Nombres de meses para el nombre del archivo
       const monthNames = [
         'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
         'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
       ];
 
-      // Configurar respuesta como PDF descargable
       const fileName = `Calendario_${monthNames[month - 1]}_${year}.pdf`;
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
 
-      // Generar el PDF y enviarlo como stream al response
       const pdfDoc = generateCalendarPdf({
         year,
         month,
         churchName,
-        events: events.map((e) => e.toJSON()), // Convertir a objetos planos
+        events: events.map((e) => e.toJSON()),
       });
 
-      // pdfkit es un stream, lo conectamos directamente al response
       pdfDoc.pipe(res);
 
     } catch (error) {
       console.error('[CALENDAR PDF ERROR]', error);
-      res.status(500).json({
-        message: 'Error al generar calendario PDF.',
-        error: error.message,
-      });
+      res.status(500).json({ message: 'Error al generar calendario PDF.', error: error.message });
     }
   },
 };

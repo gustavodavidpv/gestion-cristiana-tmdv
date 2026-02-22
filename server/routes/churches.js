@@ -8,9 +8,10 @@ router.use(authenticate);
 // Iglesias
 router.get('/', churchController.getAll);
 router.get('/:id', churchController.getById);
-router.post('/', authorize('Administrador'), churchController.create);
-router.put('/:id', authorize('Administrador', 'Secretaría'), churchController.update);
-router.delete('/:id', authorize('Administrador'), churchController.delete);
+// Solo SuperAdmin puede CREAR y ELIMINAR iglesias (authorize bypasses SuperAdmin)
+router.post('/', authorize('SuperAdmin'), churchController.create);
+router.put('/:id', authorize('Administrador'), churchController.update);
+router.delete('/:id', authorize('SuperAdmin'), churchController.delete);
 
 // Misiones
 router.post('/:id/missions', authorize('Administrador', 'Secretaría'), churchController.createMission);

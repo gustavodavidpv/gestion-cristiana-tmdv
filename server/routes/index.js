@@ -8,5 +8,7 @@ router.use('/churches', require('./churches'));
 router.use('/events', require('./events'));
 router.use('/minutes', require('./minutes'));
 router.use('/weekly-attendance', require('./weeklyAttendance'));
+router.use('/ministerial-positions', require('./ministerialPositions'));
+router.use('/branding', require('./branding'));
 
 module.exports = router;
