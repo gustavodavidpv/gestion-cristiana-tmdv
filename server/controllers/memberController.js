@@ -3,6 +3,81 @@ const { Op } = require('sequelize');
 const { recalculateChurchRoleCounts, recalculateMembershipCount } = require('../utils/churchStats');
 const { isSuperAdmin, applyTenantFilter } = require('../middleware/auth');
 
+/**
+ * Sanitiza campos opcionales del formulario de miembro.
+ * 
+ * El frontend envía strings vacíos '' para campos no llenados,
+ * pero el modelo espera null (no '') para campos como:
+ * - age (INTEGER): '' causa error de tipo en PostgreSQL
+ * - sex (CHAR): '' no pasa la validación isIn(['M','F'])
+ * - birth_date (DATEONLY): '' causa error de tipo
+ * - phone, email, address: '' → null por consistencia
+ * 
+ * @param {Object} data - Datos del formulario (req.body)
+ * @returns {Object} Datos con strings vacíos convertidos a null
+ */
+function sanitizeMemberData(data) {
+  const sanitized = { ...data };
+
+  // Campos que deben ser null si vienen como string vacío
+  const nullableFields = [
+    'age', 'sex', 'birth_date', 'phone', 'email', 'address',
+    'church_role', 'position_id', 'photo_url',
+  ];
+
+  nullableFields.forEach((field) => {
+    if (sanitized[field] === '' || sanitized[field] === undefined) {
+      sanitized[field] = null;
+    }
+  });
+
+  // age: convertir a entero si viene como string numérico
+  if (sanitized.age !== null && sanitized.age !== undefined) {
+    const parsed = parseInt(sanitized.age, 10);
+    sanitized.age = isNaN(parsed) ? null : parsed;
+  }
+
+  // position_id: convertir a entero si viene como string numérico
+  if (sanitized.position_id !== null && sanitized.position_id !== undefined) {
+    const parsed = parseInt(sanitized.position_id, 10);
+    sanitized.position_id = isNaN(parsed) ? null : parsed;
+  }
+
+  return sanitized;
+}
+
+/**
+ * Auto-sincroniza el campo church_role desde position_id.
+ * 
+ * Cuando un miembro tiene position_id asignado, busca el nombre del cargo
+ * en ministerial_positions y lo copia a church_role. Esto permite que las
+ * estadísticas de la iglesia (ordained_preachers, unordained_preachers, etc.)
+ * sigan funcionando correctamente porque leen desde church_role.
+ * 
+ * Si position_id es null (sin cargo), church_role también se pone en null.
+ * 
+ * @param {Object} data - Datos sanitizados del miembro
+ * @returns {Object} Datos con church_role sincronizado
+ */
+async function syncChurchRoleFromPosition(data) {
+  if (data.position_id) {
+    try {
+      const position = await MinisterialPosition.findByPk(data.position_id);
+      if (position) {
+        // Copiar el nombre del cargo al campo church_role
+        // Así las estadísticas siguen leyendo desde church_role
+        data.church_role = position.name;
+      }
+    } catch (err) {
+      console.error('[SYNC] Error al sincronizar church_role desde position_id:', err.message);
+    }
+  } else {
+    // Si no tiene cargo asignado, limpiar church_role
+    data.church_role = null;
+  }
+  return data;
+}
+
 const memberController = {
   // GET /api/members?church_id=X&search=Y&member_type=Z&church_role=W
   async getAll(req, res) {
@@ -76,37 +151,50 @@ const memberController = {
   /**
    * POST /api/members
    * Crear un nuevo miembro.
-   * Recalcula: membership_count siempre, church_role counts si tiene cargo.
+   * 
+   * Flujo:
+   * 1. Sanitizar datos ('' → null para campos opcionales)
+   * 2. Si tiene position_id, auto-sincronizar church_role con el nombre del cargo
+   * 3. Crear el miembro
+   * 4. Recalcular estadísticas: membership_count + cargos ministeriales
    */
   async create(req, res) {
     try {
-      const {
-        church_id, first_name, last_name, age, sex, birth_date,
-        baptized, member_type, church_role, position_id, phone, email, address,
-      } = req.body;
+      // Paso 1: Sanitizar campos vacíos → null
+      let data = sanitizeMemberData(req.body);
 
+      // Asignar church_id del usuario si no viene explícito
+      data.church_id = data.church_id || req.user.church_id;
+
+      // Paso 2: Auto-sincronizar church_role desde position_id
+      // Si el miembro tiene un cargo dinámico asignado, copiar el nombre
+      // del cargo a church_role para que las estadísticas funcionen.
+      data = await syncChurchRoleFromPosition(data);
+
+      // Paso 3: Crear el miembro
       const member = await Member.create({
-        church_id: church_id || req.user.church_id,
-        first_name,
-        last_name,
-        age,
-        sex,
-        birth_date: birth_date || null,
-        baptized,
-        member_type,
-        church_role: church_role || null,
-        position_id: position_id || null,
-        phone,
-        email,
-        address,
+        church_id: data.church_id,
+        first_name: data.first_name,
+        last_name: data.last_name,
+        age: data.age,
+        sex: data.sex,
+        birth_date: data.birth_date,
+        baptized: data.baptized,
+        member_type: data.member_type,
+        church_role: data.church_role,
+        position_id: data.position_id,
+        phone: data.phone,
+        email: data.email,
+        address: data.address,
       });
 
-      // Recalcular estadísticas de la iglesia
+      // Paso 4: Recalcular estadísticas de la iglesia
       try {
         const church = await Church.findByPk(member.church_id);
         if (church) {
           await recalculateMembershipCount(church);
-          if (member.church_role) {
+          // Recalcular cargos si tiene church_role (ya sea legacy o sincronizado)
+          if (member.church_role || member.position_id) {
             await recalculateChurchRoleCounts(church);
           }
         }
@@ -122,7 +210,13 @@ const memberController = {
 
   /**
    * PUT /api/members/:id
-   * Actualizar miembro. Si cambió church_role, recalcular contadores.
+   * Actualizar miembro.
+   * 
+   * Flujo:
+   * 1. Sanitizar datos
+   * 2. Si cambió position_id, auto-sincronizar church_role
+   * 3. Actualizar el miembro
+   * 4. Si cambió cargo o iglesia, recalcular estadísticas
    */
   async update(req, res) {
     try {
@@ -131,19 +225,29 @@ const memberController = {
         return res.status(404).json({ message: 'Miembro no encontrado.' });
       }
 
+      // Guardar valores previos para detectar cambios
       const prevChurchId = member.church_id;
       const prevRole = member.church_role;
+      const prevPositionId = member.position_id;
 
-      if (req.body.church_role === '') {
-        req.body.church_role = null;
+      // Paso 1: Sanitizar campos vacíos → null
+      let data = sanitizeMemberData(req.body);
+
+      // Paso 2: Auto-sincronizar church_role desde position_id si cambió
+      // Solo sincronizar si el position_id viene en el body (fue enviado por el frontend)
+      if ('position_id' in req.body) {
+        data = await syncChurchRoleFromPosition(data);
       }
 
-      await member.update(req.body);
+      // Paso 3: Actualizar el miembro
+      await member.update(data);
 
+      // Paso 4: Recalcular estadísticas si cambió cargo o iglesia
       const roleChanged = prevRole !== member.church_role;
+      const positionChanged = prevPositionId !== member.position_id;
       const churchChanged = prevChurchId !== member.church_id;
 
-      if (roleChanged || churchChanged) {
+      if (roleChanged || positionChanged || churchChanged) {
         try {
           const currentChurch = await Church.findByPk(member.church_id);
           if (currentChurch) {
@@ -151,6 +255,7 @@ const memberController = {
             if (churchChanged) await recalculateMembershipCount(currentChurch);
           }
 
+          // Si cambió de iglesia, recalcular también la iglesia anterior
           if (churchChanged && prevChurchId) {
             const prevChurch = await Church.findByPk(prevChurchId);
             if (prevChurch) {
@@ -171,6 +276,7 @@ const memberController = {
 
   /**
    * DELETE /api/members/:id
+   * Recalcula membership_count y cargos ministeriales después de eliminar.
    */
   async delete(req, res) {
     try {
@@ -180,7 +286,8 @@ const memberController = {
       }
 
       const churchId = member.church_id;
-      const hadRole = !!member.church_role;
+      // Detectar si tenía cargo (por cualquiera de los dos sistemas)
+      const hadRole = !!member.church_role || !!member.position_id;
 
       await member.destroy();
 

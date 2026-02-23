@@ -4,9 +4,9 @@
  * Incluye:
  * - Campo 'birth_date' (fecha de nacimiento, opcional)
  * - Tipo 'Infante' adicional a Miembro, Visitante, Familiar, Otro
- * - Campo opcional 'church_role' (Cargo Ministerial)
- *   que al cambiar recalcula automáticamente los contadores
- *   en la tabla churches del backend.
+ * - Cargo Ministerial DINÁMICO: cargado desde el módulo "Cargos Ministeriales"
+ *   vía GET /api/ministerial-positions. Los cargos creados en esa sección
+ *   se reflejan automáticamente en el select de este formulario.
  * - Al crear/eliminar un miembro se recalcula membership_count
  */
 import React, { useState, useEffect, useCallback } from 'react';
@@ -26,18 +26,15 @@ import {
 /** Tipos de miembro disponibles (incluye Infante) */
 const MEMBER_TYPES = ['Miembro', 'Visitante', 'Familiar', 'Infante', 'Otro'];
 
-/** Opciones de cargo ministerial (opcionales) */
-const CHURCH_ROLES = [
-  { value: '', label: 'Sin cargo' },
-  { value: 'Predicador Ordenado', label: 'Predicador Ordenado' },
-  { value: 'Predicador No Ordenado', label: 'Predicador No Ordenado' },
-  { value: 'Diácono Ordenado', label: 'Diácono Ordenado' },
-  { value: 'Diácono No Ordenado', label: 'Diácono No Ordenado' },
-];
-
 const emptyForm = {
   first_name: '', last_name: '', age: '', sex: '', birth_date: '',
-  baptized: false, member_type: 'Miembro', church_role: '',
+  baptized: false, member_type: 'Miembro',
+  /**
+   * position_id: FK a ministerial_positions (sistema nuevo, escalable).
+   * Este campo almacena el ID del cargo ministerial seleccionado
+   * que proviene del CRUD de "Cargos Ministeriales".
+   */
+  position_id: '',
   phone: '', email: '', address: '',
 };
 
@@ -47,11 +44,38 @@ const Members = () => {
   const [pagination, setPagination] = useState({ page: 0, total: 0 });
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('');
-  const [filterRole, setFilterRole] = useState('');
+  const [filterPosition, setFilterPosition] = useState('');
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
+
+  /**
+   * Cargos ministeriales dinámicos obtenidos del endpoint
+   * GET /api/ministerial-positions.
+   * Solo se muestran los activos (is_active = true) de la iglesia del usuario.
+   * Estos son los mismos cargos que se crean en la sección "Cargos Ministeriales".
+   */
+  const [positions, setPositions] = useState([]);
+
+  // ===== CARGA DE CARGOS MINISTERIALES =====
+  /**
+   * Se cargan al montar el componente para tener disponibles
+   * tanto en los filtros como en el formulario de crear/editar.
+   */
+  const loadPositions = useCallback(async () => {
+    try {
+      const { data } = await api.get('/ministerial-positions');
+      // Filtrar solo cargos activos para el select
+      const active = (data.positions || []).filter((p) => p.is_active);
+      setPositions(active);
+    } catch (error) {
+      console.error('Error al cargar cargos ministeriales:', error);
+      // Si falla, el select mostrará solo "Sin cargo"
+    }
+  }, []);
+
+  useEffect(() => { loadPositions(); }, [loadPositions]);
 
   // ===== CARGA DE MIEMBROS =====
   const loadMembers = useCallback(async (page = 0) => {
@@ -60,7 +84,8 @@ const Members = () => {
       const params = { page: page + 1, limit: 15 };
       if (search) params.search = search;
       if (filterType) params.member_type = filterType;
-      if (filterRole) params.church_role = filterRole;
+      // Filtrar por position_id (cargo ministerial dinámico)
+      if (filterPosition) params.position_id = filterPosition;
       const { data } = await api.get('/members', { params });
       setMembers(data.members);
       setPagination({ page, total: data.pagination.total });
@@ -69,7 +94,7 @@ const Members = () => {
     } finally {
       setLoading(false);
     }
-  }, [search, filterType, filterRole]);
+  }, [search, filterType, filterPosition]);
 
   useEffect(() => { loadMembers(); }, [loadMembers]);
 
@@ -77,11 +102,17 @@ const Members = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      // Preparar datos: enviar position_id como número o null
+      const payload = {
+        ...form,
+        position_id: form.position_id || null,
+      };
+
       if (editing) {
-        await api.put(`/members/${editing.id}`, form);
+        await api.put(`/members/${editing.id}`, payload);
         toast.success('Miembro actualizado');
       } else {
-        await api.post('/members', form);
+        await api.post('/members', payload);
         toast.success('Miembro creado');
       }
       setShowModal(false);
@@ -97,7 +128,11 @@ const Members = () => {
       first_name: m.first_name, last_name: m.last_name, age: m.age || '',
       sex: m.sex || '', birth_date: m.birth_date || '',
       baptized: m.baptized, member_type: m.member_type,
-      church_role: m.church_role || '',
+      /**
+       * Al editar, cargar el position_id actual del miembro.
+       * Si el miembro tiene un cargo asignado via FK, se pre-selecciona.
+       */
+      position_id: m.position_id || '',
       phone: m.phone || '', email: m.email || '', address: m.address || '',
     });
     setShowModal(true);
@@ -127,24 +162,25 @@ const Members = () => {
     return map[t] || 'default';
   };
 
-  /** Chip con abreviatura del cargo ministerial */
-  const roleChip = (role) => {
-    if (!role) return null;
-    const colorMap = {
-      'Predicador Ordenado': 'secondary',
-      'Predicador No Ordenado': 'info',
-      'Diácono Ordenado': 'success',
-      'Diácono No Ordenado': 'warning',
-    };
-    const shortMap = {
-      'Predicador Ordenado': 'Pred. Ord.',
-      'Predicador No Ordenado': 'Pred. N/O',
-      'Diácono Ordenado': 'Diác. Ord.',
-      'Diácono No Ordenado': 'Diác. N/O',
-    };
-    return (
-      <Chip label={shortMap[role] || role} size="small" color={colorMap[role] || 'default'} variant="outlined" />
-    );
+  /**
+   * Muestra el nombre del cargo ministerial como Chip.
+   * Busca primero en la relación 'position' (FK nuevo),
+   * luego cae al campo legacy 'church_role' (texto estático).
+   */
+  const getPositionDisplay = (member) => {
+    // Prioridad 1: cargo dinámico via position (relación incluida por el backend)
+    if (member.position) {
+      return (
+        <Chip label={member.position.name} size="small" color="secondary" variant="outlined" />
+      );
+    }
+    // Prioridad 2: cargo legacy (texto estático en church_role)
+    if (member.church_role) {
+      return (
+        <Chip label={member.church_role} size="small" color="default" variant="outlined" />
+      );
+    }
+    return <Typography variant="caption" color="text.secondary">-</Typography>;
   };
 
   /** Formatear fecha de nacimiento */
@@ -179,12 +215,13 @@ const Members = () => {
             {MEMBER_TYPES.map((t) => <MenuItem key={t} value={t}>{t}</MenuItem>)}
           </Select>
         </FormControl>
+        {/* Filtro de cargo ministerial: usa cargos dinámicos de la BD */}
         <FormControl size="small" sx={{ minWidth: 170 }}>
           <InputLabel>Cargo Ministerial</InputLabel>
-          <Select value={filterRole} onChange={(e) => setFilterRole(e.target.value)} label="Cargo Ministerial">
+          <Select value={filterPosition} onChange={(e) => setFilterPosition(e.target.value)} label="Cargo Ministerial">
             <MenuItem value="">Todos</MenuItem>
-            {CHURCH_ROLES.filter((r) => r.value).map((r) => (
-              <MenuItem key={r.value} value={r.value}>{r.label}</MenuItem>
+            {positions.map((p) => (
+              <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
             ))}
           </Select>
         </FormControl>
@@ -217,9 +254,9 @@ const Members = () => {
                   <TableCell>
                     <Typography fontWeight={600} fontSize={14}>{m.first_name} {m.last_name}</Typography>
                     {/* En móvil mostrar cargo debajo del nombre */}
-                    {m.church_role && (
+                    {(m.position || m.church_role) && (
                       <Box sx={{ display: { md: 'none' }, mt: 0.5 }}>
-                        {roleChip(m.church_role)}
+                        {getPositionDisplay(m)}
                       </Box>
                     )}
                   </TableCell>
@@ -228,7 +265,7 @@ const Members = () => {
                   <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{m.sex === 'M' ? 'M' : m.sex === 'F' ? 'F' : '-'}</TableCell>
                   <TableCell><Chip label={m.member_type} size="small" color={typeColor(m.member_type)} /></TableCell>
                   <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
-                    {m.church_role ? roleChip(m.church_role) : <Typography variant="caption" color="text.secondary">-</Typography>}
+                    {getPositionDisplay(m)}
                   </TableCell>
                   <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>{m.baptized ? '✅' : '❌'}</TableCell>
                   <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>{m.phone || '-'}</TableCell>
@@ -294,7 +331,7 @@ const Members = () => {
                 </FormControl>
               </Grid>
 
-              {/* Tipo y Cargo Ministerial */}
+              {/* Tipo de miembro */}
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Tipo</InputLabel>
@@ -303,16 +340,25 @@ const Members = () => {
                   </Select>
                 </FormControl>
               </Grid>
+
+              {/*
+                * CARGO MINISTERIAL DINÁMICO:
+                * Las opciones provienen del módulo "Cargos Ministeriales"
+                * (GET /api/ministerial-positions). Cuando el admin crea un cargo
+                * nuevo en esa sección, aparece automáticamente aquí.
+                * Se guarda como position_id (FK a ministerial_positions).
+                */}
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Cargo Ministerial (opcional)</InputLabel>
                   <Select
-                    value={form.church_role}
-                    onChange={(e) => setForm({ ...form, church_role: e.target.value })}
+                    value={form.position_id}
+                    onChange={(e) => setForm({ ...form, position_id: e.target.value })}
                     label="Cargo Ministerial (opcional)"
                   >
-                    {CHURCH_ROLES.map((r) => (
-                      <MenuItem key={r.value} value={r.value}>{r.label}</MenuItem>
+                    <MenuItem value="">Sin cargo</MenuItem>
+                    {positions.map((p) => (
+                      <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>

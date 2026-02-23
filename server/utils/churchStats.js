@@ -92,7 +92,17 @@ async function recalculateAvgWeeklyAttendance(church) {
 /**
  * Recalcula los contadores de cargos ministeriales de una iglesia.
  * 
- * Cuenta los miembros de la iglesia agrupados por church_role y actualiza:
+ * FUENTE DUAL (belt-and-suspenders):
+ * - Columna church_role (texto): puede venir del sistema legacy O auto-sincronizado
+ *   desde position_id por el controller.
+ * - Columna position_id → ministerial_positions.name (FK nuevo): sistema escalable.
+ * 
+ * Para cada miembro se usa COALESCE(ministerial_positions.name, church_role):
+ * - Si tiene position_id → usa el nombre del cargo ministerial dinámico
+ * - Si solo tiene church_role → usa el texto legacy
+ * - Esto evita doble conteo con COUNT(DISTINCT m.id)
+ * 
+ * Actualiza:
  * - ordained_preachers:   Cantidad de 'Predicador Ordenado'
  * - unordained_preachers: Cantidad de 'Predicador No Ordenado'
  * - ordained_deacons:     Cantidad de 'Diácono Ordenado'
@@ -103,24 +113,29 @@ async function recalculateAvgWeeklyAttendance(church) {
  */
 async function recalculateChurchRoleCounts(church) {
   try {
-    // Consulta agrupada: una sola query para todos los contadores
-    const counts = await Member.findAll({
-      where: {
-        church_id: church.id,
-        church_role: { [Op.ne]: null },  // Solo miembros con cargo
-      },
-      attributes: [
-        'church_role',
-        [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
-      ],
-      group: ['church_role'],
-      raw: true,
+    /**
+     * Query con LEFT JOIN a ministerial_positions.
+     * COALESCE prioriza el nombre del cargo dinámico (position) sobre el texto legacy (church_role).
+     * COUNT(DISTINCT m.id) evita doble conteo si ambos campos están seteados.
+     */
+    const counts = await sequelize.query(`
+      SELECT 
+        COALESCE(mp.name, m.church_role) AS role_name,
+        COUNT(DISTINCT m.id) AS count
+      FROM members m
+      LEFT JOIN ministerial_positions mp ON m.position_id = mp.id
+      WHERE m.church_id = :churchId
+        AND (m.church_role IS NOT NULL OR m.position_id IS NOT NULL)
+      GROUP BY COALESCE(mp.name, m.church_role)
+    `, {
+      replacements: { churchId: church.id },
+      type: sequelize.QueryTypes.SELECT,
     });
 
     // Mapear resultados a un objeto para fácil acceso
     const roleMap = {};
     counts.forEach((row) => {
-      roleMap[row.church_role] = parseInt(row.count) || 0;
+      roleMap[row.role_name] = parseInt(row.count) || 0;
     });
 
     const stats = {

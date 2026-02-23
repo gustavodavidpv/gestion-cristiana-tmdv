@@ -23,7 +23,7 @@ const EVENT_COLORS = {
   'Reunión':      { bg: '#FFF3E0', text: '#E65100', border: '#FFA726' },
   'Jornada':      { bg: '#F3E5F5', text: '#4A148C', border: '#AB47BC' },
   'Conferencia':  { bg: '#FCE4EC', text: '#880E4F', border: '#EC407A' },
-  'Retiro':       { bg: '#E0F7FA', text: '#006064', border: '#26C6DA' },
+  'Campamento':   { bg: '#E0F7FA', text: '#006064', border: '#26C6DA' },
   'Otro':         { bg: '#F5F5F5', text: '#424242', border: '#BDBDBD' },
 };
 
@@ -274,40 +274,49 @@ function generateCalendarPdf({ year, month, churchName, events }) {
       if (dayEvents.length === 0) return;
 
       const evStartY = rowY + 17;
-      const maxEvents = Math.floor((rowHeight - 20) / 13);
+      /**
+       * LAYOUT DE EVENTOS EN 2 LÍNEAS:
+       * Línea 1: hora/estado (bold, pequeño)
+       * Línea 2: título COMPLETO del evento (sin truncar)
+       *
+       * Esto permite ver el nombre entero del evento sin puntos suspensivos.
+       * Cada slot de evento ocupa 22px (antes 13px con título truncado).
+       */
+      const eventSlotHeight = 22;
+      const maxEvents = Math.floor((rowHeight - 20) / eventSlotHeight);
       const eventsToShow = dayEvents.slice(0, maxEvents);
       const remaining = dayEvents.length - eventsToShow.length;
 
       eventsToShow.forEach((occ, evIndex) => {
-        const evY = evStartY + (evIndex * 13);
+        const evY = evStartY + (evIndex * eventSlotHeight);
         const colors = EVENT_COLORS[occ.event_type] || EVENT_COLORS['Otro'];
 
-        // Fondo del evento
-        doc.roundedRect(cellX + 2, evY, colWidth - 4, 12, 2).fill(colors.bg);
+        // Fondo del evento (ahora más alto para 2 líneas)
+        doc.roundedRect(cellX + 2, evY, colWidth - 4, eventSlotHeight - 2, 2).fill(colors.bg);
 
         // Línea izquierda de color (accent). Doble barra para multi-día
         if (occ.dayType === 'middle') {
-          doc.rect(cellX + 2, evY, 2.5, 12).fill(colors.border);
-          doc.rect(cellX + 5, evY, 1, 12).fill(colors.border);
+          doc.rect(cellX + 2, evY, 2.5, eventSlotHeight - 2).fill(colors.border);
+          doc.rect(cellX + 5, evY, 1, eventSlotHeight - 2).fill(colors.border);
         } else {
-          doc.rect(cellX + 2, evY, 2.5, 12).fill(colors.border);
+          doc.rect(cellX + 2, evY, 2.5, eventSlotHeight - 2).fill(colors.border);
         }
 
-        // Label de hora/estado
-        doc.font('Helvetica-Bold').fontSize(5.5).fillColor(colors.text)
-           .text(occ.label, cellX + 6, evY + 2, { width: 36, lineBreak: false });
+        // Línea 1: Label de hora/estado (bold)
+        doc.font('Helvetica-Bold').fontSize(5).fillColor(colors.text)
+           .text(occ.label, cellX + 7, evY + 1.5, {
+             width: colWidth - 12, lineBreak: false,
+           });
 
-        // Título del evento (truncado)
-        const maxTitleChars = Math.floor((colWidth - 46) / 3.2);
-        const title = truncate(occ.title, maxTitleChars);
+        // Línea 2: Título COMPLETO del evento (sin truncar)
         doc.font('Helvetica').fontSize(5.5).fillColor(colors.text)
-           .text(title, cellX + 40, evY + 2, {
-             width: colWidth - 44, lineBreak: false,
+           .text(occ.title, cellX + 7, evY + 9, {
+             width: colWidth - 12, lineBreak: false,
            });
       });
 
       if (remaining > 0) {
-        const moreY = evStartY + (eventsToShow.length * 13);
+        const moreY = evStartY + (eventsToShow.length * eventSlotHeight);
         doc.font('Helvetica-Bold').fontSize(6).fillColor('#666666')
            .text(`+${remaining} más...`, cellX + 4, moreY + 1, {
              width: colWidth - 8, align: 'center',

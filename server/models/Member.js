@@ -59,15 +59,18 @@ const Member = sequelize.define('Member', {
     },
   },
   /**
-   * church_role - Cargo ministerial del miembro (LEGACY - texto libre)
+   * church_role - Cargo ministerial del miembro (texto, auto-sincronizado)
    * 
-   * Se mantiene por compatibilidad. Para nuevos registros usar position_id.
-   * Valores posibles:
-   * - null: Sin cargo especial
-   * - 'Predicador Ordenado'
-   * - 'Predicador No Ordenado'
-   * - 'Diácono Ordenado'
-   * - 'Diácono No Ordenado'
+   * ANTES era un campo con valores fijos (Predicador Ordenado, etc.).
+   * AHORA se auto-sincroniza desde position_id: cuando se asigna un cargo
+   * via el select dinámico (position_id → ministerial_positions.name),
+   * el controller copia el nombre del cargo aquí automáticamente.
+   * 
+   * Esto permite que las estadísticas (ordained_preachers, etc.) sigan
+   * funcionando sin cambios, ya que leen desde esta columna.
+   * 
+   * Se removió la validación isIn rígida porque ahora los cargos son
+   * dinámicos (el admin puede crear cualquier cargo en "Cargos Ministeriales").
    * 
    * Al crear/editar/eliminar un miembro, se recalculan automáticamente
    * los contadores en la tabla churches:
@@ -75,13 +78,10 @@ const Member = sequelize.define('Member', {
    *   ordained_deacons, unordained_deacons
    */
   church_role: {
-    type: DataTypes.STRING(30),
+    type: DataTypes.STRING(100),
     allowNull: true,
     defaultValue: null,
-    validate: {
-      isIn: [[null, '', 'Predicador Ordenado', 'Predicador No Ordenado', 'Diácono Ordenado', 'Diácono No Ordenado']],
-    },
-    comment: 'Cargo ministerial legacy (texto). Usar position_id para nuevos.',
+    comment: 'Nombre del cargo ministerial. Auto-sincronizado desde position_id.',
   },
   /**
    * position_id - FK a ministerial_positions (NUEVO, escalable)
