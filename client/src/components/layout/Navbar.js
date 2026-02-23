@@ -13,7 +13,16 @@ import {
 import { Menu as MenuIcon, Logout as LogoutIcon, Person as PersonIcon } from '@mui/icons-material';
 
 const Navbar = ({ drawerWidth, onMenuClick, isMobile }) => {
-  const { user, logout } = useAuth();
+  const { user, logout, isSuperAdmin } = useAuth();
+
+  /**
+   * Título del NavBar:
+   * - SuperAdmin: muestra "Gestión Cristiana - TMDV" (no está ligado a una iglesia específica)
+   * - Admin/otros: muestra el nombre de la iglesia del usuario
+   */
+  const navTitle = isSuperAdmin()
+    ? 'Gestión Cristiana - TMDV'
+    : (user?.church?.name || 'Gestión Cristiana - TMDV');
 
   return (
     <AppBar
@@ -36,9 +45,9 @@ const Navbar = ({ drawerWidth, onMenuClick, isMobile }) => {
           </IconButton>
         )}
 
-        {/* Título: nombre de la iglesia */}
+        {/* Título: nombre de la iglesia o genérico para SuperAdmin */}
         <Typography variant="h6" noWrap sx={{ flexGrow: 1, fontSize: { xs: 14, sm: 18 } }}>
-          {user?.church?.name || 'Gestión Cristiana - TMDV'}
+          {navTitle}
         </Typography>
 
         {/* Info del usuario */}

@@ -107,9 +107,9 @@ MinisterialPosition.belongsTo(Church, { foreignKey: 'church_id', as: 'church' })
 
 // MinisterialPosition <-> Member (1:N)
 MinisterialPosition.hasMany(Member, { foreignKey: 'position_id', as: 'members', constraints: false, });
-Member.belongsTo(MinisterialPosition, { foreignKey: 'position_id', as: 'position',
-  constraints: false, // ✅ clave para que no toque constraints en sync alter 
-  });
+Member.belongsTo(MinisterialPosition, { foreignKey: 'position_id', as: 'position', constraints: false, // ✅ clave para que no toque constraints en sync alter 
+});
+
 
 module.exports = {
   sequelize,

@@ -27,7 +27,7 @@ import {
   CalendarMonth as CalendarIcon,
 } from '@mui/icons-material';
 
-const EVENT_TYPES = ['Evangelismo', 'Culto', 'Reunión', 'Jornada', 'Conferencia', 'Retiro', 'Otro'];
+const EVENT_TYPES = ['Evangelismo', 'Culto', 'Reunión', 'Jornada', 'Conferencia', 'Campamento', 'Otro'];
 
 const Events = () => {
   const { hasRole } = useAuth();
