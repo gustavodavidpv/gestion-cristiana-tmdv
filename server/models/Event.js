@@ -51,6 +51,41 @@ const Event = sequelize.define('Event', {
     type: DataTypes.INTEGER,
     defaultValue: 0,
   },
+
+  // =============================================
+  // ROLES DE CULTO (solo aplican si event_type === 'Culto')
+  // =============================================
+
+  /**
+   * preacher_id - Miembro que PREDICA en este culto.
+   * FK a members.id. Null si no es un culto o no se asignó.
+   */
+  preacher_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: null,
+    comment: 'FK al miembro que predica en este culto',
+  },
+  /**
+   * worship_leader_id - Miembro que DIRIGE la adoración en este culto.
+   * FK a members.id. Null si no es un culto o no se asignó.
+   */
+  worship_leader_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: null,
+    comment: 'FK al miembro que dirige la adoración en este culto',
+  },
+  /**
+   * singer_id - Miembro que CANTA (líder de cánticos) en este culto.
+   * FK a members.id. Null si no es un culto o no se asignó.
+   */
+  singer_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: null,
+    comment: 'FK al miembro que canta en este culto',
+  },
 }, {
   tableName: 'events',
 });

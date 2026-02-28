@@ -25,9 +25,10 @@ import {
   CheckCircle as CheckIcon, Favorite as FavoriteIcon,
   Close as CloseIcon, SelectAll as SelectAllIcon,
   CalendarMonth as CalendarIcon,
+  Storefront as StorefrontIcon,
 } from '@mui/icons-material';
 
-const EVENT_TYPES = ['Evangelismo', 'Culto', 'Reunión', 'Jornada', 'Conferencia', 'Campamento', 'Otro'];
+const EVENT_TYPES = ['Evangelismo', 'Culto', 'Reunión', 'Jornada', 'Conferencia', 'Campamento', 'Ventas', 'Otro'];
 
 const Events = () => {
   const { hasRole } = useAuth();
@@ -41,7 +42,16 @@ const Events = () => {
   const [form, setForm] = useState({
     title: '', description: '', event_type: 'Evangelismo',
     start_date: '', end_date: '', location: '',
+    // Roles de culto (solo aplican si event_type === 'Culto')
+    preacher_id: '', worship_leader_id: '', singer_id: '',
   });
+
+  /**
+   * Lista de miembros para los selectores de roles de culto (P, D, C).
+   * Se carga al abrir el modal de crear/editar si el tipo es 'Culto',
+   * o al cambiar el tipo a 'Culto'.
+   */
+  const [cultoMembers, setCultoMembers] = useState([]);
 
   // Estado del modal de asistentes
   const [showAttendeesModal, setShowAttendeesModal] = useState(false);
@@ -56,6 +66,11 @@ const Events = () => {
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth() + 1);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  // === Estado del modal de Calendario de Ventas PDF ===
+  const [showSalesCalendarModal, setShowSalesCalendarModal] = useState(false);
+  const [salesCalendarYear, setSalesCalendarYear] = useState(new Date().getFullYear());
+  const [downloadingSalesPdf, setDownloadingSalesPdf] = useState(false);
 
   // ===== CARGA DE EVENTOS =====
   const loadEvents = useCallback(async (page = 0) => {
@@ -72,6 +87,19 @@ const Events = () => {
   }, []);
 
   useEffect(() => { loadEvents(); }, [loadEvents]);
+
+  /**
+   * Carga la lista de miembros para los selectores de roles de culto.
+   * Se ejecuta al abrir el modal de evento cuando el tipo es 'Culto'.
+   */
+  const loadCultoMembers = useCallback(async () => {
+    try {
+      const { data } = await api.get('/members', { params: { limit: 500 } });
+      setCultoMembers(data.members || []);
+    } catch (error) {
+      console.error('Error al cargar miembros para roles de culto:', error);
+    }
+  }, []);
 
   // ===== CRUD DE EVENTOS =====
   const handleSubmit = async (e) => {
@@ -99,13 +127,23 @@ const Events = () => {
       start_date: event.start_date ? event.start_date.slice(0, 16) : '',
       end_date: event.end_date ? event.end_date.slice(0, 16) : '',
       location: event.location || '',
+      // Cargar roles de culto existentes (vacío si no aplica)
+      preacher_id: event.preacher_id || '',
+      worship_leader_id: event.worship_leader_id || '',
+      singer_id: event.singer_id || '',
     });
+    // Si es tipo Culto, cargar miembros para los selectores
+    if (event.event_type === 'Culto') loadCultoMembers();
     setShowModal(true);
   };
 
   const openNew = () => {
     setEditing(null);
-    setForm({ title: '', description: '', event_type: 'Evangelismo', start_date: '', end_date: '', location: '' });
+    setForm({
+      title: '', description: '', event_type: 'Evangelismo',
+      start_date: '', end_date: '', location: '',
+      preacher_id: '', worship_leader_id: '', singer_id: '',
+    });
     setShowModal(true);
   };
 
@@ -284,6 +322,39 @@ const Events = () => {
     }
   };
 
+  /**
+   * Descarga el Calendario de Ventas PDF del año seleccionado.
+   * Llama al endpoint GET /api/events/sales-calendar-pdf?year=YYYY
+   * y descarga el PDF con formato de columnas por mes (estilo de la imagen de referencia).
+   */
+  const downloadSalesCalendarPdf = async () => {
+    setDownloadingSalesPdf(true);
+    try {
+      const response = await api.get('/events/sales-calendar-pdf', {
+        params: { year: salesCalendarYear },
+        responseType: 'blob',
+      });
+
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Calendario_Ventas_${salesCalendarYear}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.success(`Calendario de Ventas ${salesCalendarYear} descargado`);
+      setShowSalesCalendarModal(false);
+    } catch (error) {
+      toast.error('Error al generar el calendario de ventas PDF');
+      console.error('Error descargando calendario ventas:', error);
+    } finally {
+      setDownloadingSalesPdf(false);
+    }
+  };
+
   // Filtro de búsqueda de miembros
   const filteredMembers = allMembers.filter((m) => {
     if (!memberSearch) return true;
@@ -305,11 +376,17 @@ const Events = () => {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h5" fontWeight={700}>Eventos</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          {/* Botón Calendario PDF */}
+          {/* Botón Calendario PDF mensual */}
           <Button variant="outlined" startIcon={<CalendarIcon />}
             onClick={() => setShowCalendarModal(true)}
             color="secondary">
             Calendario PDF
+          </Button>
+          {/* Botón Calendario de Ventas PDF (muestra todos los meses con eventos tipo Ventas) */}
+          <Button variant="outlined" startIcon={<StorefrontIcon />}
+            onClick={() => setShowSalesCalendarModal(true)}
+            color="warning">
+            Ventas PDF
           </Button>
           {hasRole('Administrador', 'Secretaría', 'Líder') && (
             <Button variant="contained" startIcon={<AddIcon />} onClick={openNew}>Nuevo Evento</Button>
@@ -345,6 +422,26 @@ const Events = () => {
                     <Typography variant="caption" color="text.secondary" sx={{ display: { sm: 'none' } }}>
                       {ev.event_type} • {formatDate(ev.start_date)}
                     </Typography>
+                    {/* Mostrar roles de culto (P, D, C) debajo del título si es tipo Culto */}
+                    {ev.event_type === 'Culto' && (ev.preacher || ev.worship_leader || ev.singer) && (
+                      <Box sx={{ mt: 0.5, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {ev.preacher && (
+                          <Chip label={`P: ${ev.preacher.first_name} ${ev.preacher.last_name}`}
+                            size="small" variant="outlined" color="primary"
+                            sx={{ fontSize: 11, height: 22 }} />
+                        )}
+                        {ev.worship_leader && (
+                          <Chip label={`D: ${ev.worship_leader.first_name} ${ev.worship_leader.last_name}`}
+                            size="small" variant="outlined" color="secondary"
+                            sx={{ fontSize: 11, height: 22 }} />
+                        )}
+                        {ev.singer && (
+                          <Chip label={`C: ${ev.singer.first_name} ${ev.singer.last_name}`}
+                            size="small" variant="outlined" color="success"
+                            sx={{ fontSize: 11, height: 22 }} />
+                        )}
+                      </Box>
+                    )}
                   </TableCell>
                   <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
                     <Chip label={ev.event_type} size="small" variant="outlined" />
@@ -396,7 +493,16 @@ const Events = () => {
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Tipo</InputLabel>
-                  <Select value={form.event_type} onChange={(e) => setForm({ ...form, event_type: e.target.value })} label="Tipo">
+                  <Select value={form.event_type} onChange={(e) => {
+                    const newType = e.target.value;
+                    setForm({ ...form, event_type: newType });
+                    // Si cambió a Culto, cargar lista de miembros para los selectores P/D/C
+                    if (newType === 'Culto' && cultoMembers.length === 0) loadCultoMembers();
+                    // Si cambió de Culto a otro tipo, limpiar roles
+                    if (newType !== 'Culto') {
+                      setForm((prev) => ({ ...prev, event_type: newType, preacher_id: '', worship_leader_id: '', singer_id: '' }));
+                    }
+                  }} label="Tipo">
                     {EVENT_TYPES.map((t) => <MenuItem key={t} value={t}>{t}</MenuItem>)}
                   </Select>
                 </FormControl>
@@ -404,6 +510,69 @@ const Events = () => {
               <Grid item xs={12} sm={6}>
                 <TextField fullWidth size="small" label="Ubicación" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
               </Grid>
+
+              {/* ===== ROLES DE CULTO (solo visible si event_type === 'Culto') ===== */}
+              {form.event_type === 'Culto' && (
+                <>
+                  <Grid item xs={12}>
+                    <Divider sx={{ my: 0.5 }} />
+                    <Typography variant="subtitle2" color="primary" sx={{ mt: 1 }}>
+                      🎤 Asignación de Roles del Culto
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Seleccione quién predica, dirige y canta en este culto.
+                    </Typography>
+                  </Grid>
+                  {/* Selector: Predica (P) */}
+                  <Grid item xs={12} sm={4}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Predica (P)</InputLabel>
+                      <Select value={form.preacher_id}
+                        onChange={(e) => setForm({ ...form, preacher_id: e.target.value })}
+                        label="Predica (P)">
+                        <MenuItem value=""><em>— Sin asignar —</em></MenuItem>
+                        {cultoMembers.map((m) => (
+                          <MenuItem key={m.id} value={m.id}>
+                            {m.first_name} {m.last_name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  {/* Selector: Dirige (D) */}
+                  <Grid item xs={12} sm={4}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Dirige (D)</InputLabel>
+                      <Select value={form.worship_leader_id}
+                        onChange={(e) => setForm({ ...form, worship_leader_id: e.target.value })}
+                        label="Dirige (D)">
+                        <MenuItem value=""><em>— Sin asignar —</em></MenuItem>
+                        {cultoMembers.map((m) => (
+                          <MenuItem key={m.id} value={m.id}>
+                            {m.first_name} {m.last_name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  {/* Selector: Canta (C) */}
+                  <Grid item xs={12} sm={4}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Canta (C)</InputLabel>
+                      <Select value={form.singer_id}
+                        onChange={(e) => setForm({ ...form, singer_id: e.target.value })}
+                        label="Canta (C)">
+                        <MenuItem value=""><em>— Sin asignar —</em></MenuItem>
+                        {cultoMembers.map((m) => (
+                          <MenuItem key={m.id} value={m.id}>
+                            {m.first_name} {m.last_name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                </>
+              )}
               <Grid item xs={12} sm={6}>
                 <TextField fullWidth required size="small" label="Inicio" type="datetime-local" InputLabelProps={{ shrink: true }}
                   value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} />
@@ -582,6 +751,36 @@ const Events = () => {
             disabled={downloadingPdf}
             startIcon={downloadingPdf ? <CircularProgress size={18} color="inherit" /> : <CalendarIcon />}>
             {downloadingPdf ? 'Generando...' : 'Descargar PDF'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ===== DIALOG SELECCIONAR AÑO PARA CALENDARIO DE VENTAS PDF ===== */}
+      <Dialog open={showSalesCalendarModal} onClose={() => setShowSalesCalendarModal(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <StorefrontIcon color="warning" />
+            Calendario de Ventas PDF
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Genera un calendario con todos los eventos de tipo <strong>Ventas</strong> del año,
+            organizado por meses en columnas (estilo calendario de ventas).
+          </Typography>
+          <TextField fullWidth size="small" label="Año" type="number"
+            value={salesCalendarYear}
+            onChange={(e) => setSalesCalendarYear(parseInt(e.target.value))}
+            inputProps={{ min: 2020, max: 2040 }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setShowSalesCalendarModal(false)}>Cancelar</Button>
+          <Button variant="contained" color="warning"
+            onClick={downloadSalesCalendarPdf}
+            disabled={downloadingSalesPdf}
+            startIcon={downloadingSalesPdf ? <CircularProgress size={18} color="inherit" /> : <StorefrontIcon />}>
+            {downloadingSalesPdf ? 'Generando...' : 'Descargar Ventas PDF'}
           </Button>
         </DialogActions>
       </Dialog>

@@ -106,6 +106,10 @@ const start = async () => {
   try {
     await sequelize.authenticate();
     console.log('📋 Conexión a la base de datos verificada.');
+
+    // Iniciar scheduler de notificaciones WhatsApp (cron jobs)
+    const { startNotificationScheduler } = require('./utils/notificationScheduler');
+    startNotificationScheduler();
   } catch (dbError) {
     console.error('❌ Error al verificar BD:', dbError.message);
     process.exit(1);

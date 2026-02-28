@@ -1,12 +1,12 @@
 /**
  * calendarPdf.js - Generador de Calendario Mensual PDF
  * 
- * MEJORAS:
- * - Soporte para eventos multi-día (2+ días):
- *   Día 1: título + hora inicio
- *   Días intermedios: título + "completo"
- *   Último día: título + hora fin
- * - Eventos de un solo día se muestran con hora inicio-fin
+ * FUNCIONALIDADES:
+ * - Soporte para eventos multi-día (2+ días)
+ * - Roles de culto: muestra P:/D:/C: debajo del título para eventos tipo Culto
+ * - Layout dinámico: la grilla se expande en alto según la cantidad de eventos
+ *   en el día más cargado de cada semana
+ * - Títulos completos de eventos (sin truncar)
  * 
  * Dependencia: pdfkit (npm install pdfkit)
  */
@@ -24,6 +24,7 @@ const EVENT_COLORS = {
   'Jornada':      { bg: '#F3E5F5', text: '#4A148C', border: '#AB47BC' },
   'Conferencia':  { bg: '#FCE4EC', text: '#880E4F', border: '#EC407A' },
   'Campamento':   { bg: '#E0F7FA', text: '#006064', border: '#26C6DA' },
+  'Ventas':       { bg: '#FFF8E1', text: '#F57F17', border: '#FFB300' },
   'Otro':         { bg: '#F5F5F5', text: '#424242', border: '#BDBDBD' },
 };
 
@@ -32,6 +33,26 @@ const MONTH_NAMES = [
   'ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
   'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE',
 ];
+
+// =============================================
+// CONSTANTES DE LAYOUT
+// =============================================
+
+/**
+ * Alturas de slot para eventos en el PDF:
+ * - SLOT_NORMAL: evento sin roles de culto (2 líneas: hora + título)
+ * - SLOT_CULTO:  evento con roles de culto (2 líneas + 3 roles: P, D, C)
+ * 
+ * Estos valores se usan para calcular la altura dinámica de cada fila.
+ */
+const SLOT_NORMAL = 22;
+const SLOT_CULTO = 44;
+
+/** Espacio reservado para el número del día en cada celda */
+const DAY_NUMBER_HEIGHT = 17;
+
+/** Margen inferior dentro de la celda */
+const CELL_BOTTOM_MARGIN = 4;
 
 // =============================================
 // FUNCIONES AUXILIARES
@@ -85,10 +106,13 @@ function toLocalDateStr(date) {
  * - Días intermedios: { label: "completo", dayType: 'middle' }
  * - Último día: { label: "▶ HH:MM", dayType: 'end' }
  * 
- * @param {Object} ev - Evento con start_date, end_date, title, event_type
+ * Ahora también incluye datos de roles de culto:
+ * - preacher_name, worship_leader_name, singer_name (del eventController)
+ * 
+ * @param {Object} ev - Evento con start_date, end_date, title, event_type, roles
  * @param {number} year - Año del calendario
  * @param {number} month - Mes del calendario (1-12)
- * @returns {Array} Array de { day, label, title, event_type, dayType, sortTime }
+ * @returns {Array} Array de { day, label, title, event_type, dayType, sortTime, cultoRoles }
  */
 function expandEventToDays(ev, year, month) {
   const start = new Date(ev.start_date);
@@ -100,6 +124,18 @@ function expandEventToDays(ev, year, month) {
 
   // Si start y end son el mismo día
   const isSameDay = startDay.getTime() === endDay.getTime();
+
+  /**
+   * Construir array de roles de culto si es tipo Culto.
+   * Solo se agregan los roles que tienen un miembro asignado.
+   * Formato: [{ prefix: 'P', name: 'Moises' }, ...]
+   */
+  const cultoRoles = [];
+  if (ev.event_type === 'Culto') {
+    if (ev.preacher_name)        cultoRoles.push({ prefix: 'P', name: ev.preacher_name });
+    if (ev.worship_leader_name)  cultoRoles.push({ prefix: 'D', name: ev.worship_leader_name });
+    if (ev.singer_name)          cultoRoles.push({ prefix: 'C', name: ev.singer_name });
+  }
 
   const occurrences = [];
   const firstDayOfMonth = new Date(year, month - 1, 1);
@@ -147,6 +183,7 @@ function expandEventToDays(ev, year, month) {
       event_type: ev.event_type,
       dayType,
       sortTime,
+      cultoRoles,  // Array de roles de culto (vacío si no es Culto)
     });
 
     // Avanzar al siguiente día
@@ -154,6 +191,37 @@ function expandEventToDays(ev, year, month) {
   }
 
   return occurrences;
+}
+
+/**
+ * Calcula la altura (px) que necesita un evento en el PDF.
+ * 
+ * - Evento normal: SLOT_NORMAL (hora + título = 2 líneas)
+ * - Evento Culto con roles: SLOT_CULTO (hora + título + hasta 3 roles)
+ * 
+ * @param {Object} occ - Ocurrencia del evento
+ * @returns {number} Altura en puntos PDF
+ */
+function getSlotHeight(occ) {
+  if (occ.cultoRoles && occ.cultoRoles.length > 0) {
+    return SLOT_CULTO;
+  }
+  return SLOT_NORMAL;
+}
+
+/**
+ * Calcula la altura total necesaria para un día dado.
+ * Suma las alturas de todos los eventos + espacio del número de día + margen.
+ * 
+ * @param {Array} dayEvents - Eventos del día
+ * @returns {number} Altura total en puntos PDF
+ */
+function getDayRequiredHeight(dayEvents) {
+  if (!dayEvents || dayEvents.length === 0) {
+    return DAY_NUMBER_HEIGHT + CELL_BOTTOM_MARGIN;
+  }
+  const eventsHeight = dayEvents.reduce((sum, occ) => sum + getSlotHeight(occ), 0);
+  return DAY_NUMBER_HEIGHT + eventsHeight + CELL_BOTTOM_MARGIN;
 }
 
 // =============================================
@@ -238,17 +306,45 @@ function generateCalendarPdf({ year, month, churchName, events }) {
   });
 
   // =========================================
-  // GRILLA DEL CALENDARIO
+  // GRILLA DEL CALENDARIO CON ALTURAS DINÁMICAS
   // =========================================
   const gridStartY = headerY + dayHeaderH;
   const weeks = getCalendarGrid(year, month);
   const totalWeeks = weeks.length;
 
-  const availableHeight = pageHeight - (gridStartY - startY) - 10;
-  const rowHeight = Math.min(availableHeight / totalWeeks, 105);
+  /**
+   * CÁLCULO DINÁMICO DE ALTURAS POR SEMANA:
+   * Para cada semana, se calcula la altura necesaria basándose en el día
+   * más cargado de esa semana. Esto permite que las filas se expandan
+   * cuando hay muchos eventos o eventos con roles de culto.
+   */
+  const availableHeight = pageHeight - (gridStartY - startY) - 25; // 25 = footer
+  const minRowHeight = 55; // Mínimo para que siempre se vea el número del día
+
+  // 1. Calcular la altura ideal de cada semana
+  const weekHeights = weeks.map((week) => {
+    let maxDayHeight = minRowHeight;
+    week.forEach((day) => {
+      if (day === null) return;
+      const dayEvts = eventsByDay[day] || [];
+      const needed = getDayRequiredHeight(dayEvts);
+      if (needed > maxDayHeight) maxDayHeight = needed;
+    });
+    return maxDayHeight;
+  });
+
+  // 2. Escalar las alturas para que quepan en la página
+  const totalIdeal = weekHeights.reduce((sum, h) => sum + h, 0);
+  const scaleFactor = totalIdeal > availableHeight ? availableHeight / totalIdeal : 1;
+  const scaledHeights = weekHeights.map((h) => Math.max(h * scaleFactor, minRowHeight));
+
+  // =========================================
+  // DIBUJAR CELDAS Y EVENTOS
+  // =========================================
+  let currentRowY = gridStartY;
 
   weeks.forEach((week, weekIndex) => {
-    const rowY = gridStartY + (weekIndex * rowHeight);
+    const rowHeight = scaledHeights[weekIndex];
 
     week.forEach((day, colIndex) => {
       const cellX = startX + (colIndex * colWidth);
@@ -256,10 +352,10 @@ function generateCalendarPdf({ year, month, churchName, events }) {
       // Fondo de la celda
       const isWeekend = colIndex === 0 || colIndex === 6;
       const bgColor = day === null ? '#F0F0F0' : (isWeekend ? '#F5F8FF' : '#FFFFFF');
-      doc.rect(cellX, rowY, colWidth, rowHeight).fill(bgColor);
+      doc.rect(cellX, currentRowY, colWidth, rowHeight).fill(bgColor);
 
       // Bordes
-      doc.rect(cellX, rowY, colWidth, rowHeight)
+      doc.rect(cellX, currentRowY, colWidth, rowHeight)
          .strokeColor('#CCCCCC').lineWidth(0.5).stroke();
 
       if (day === null) return;
@@ -267,68 +363,76 @@ function generateCalendarPdf({ year, month, churchName, events }) {
       // Número del día
       doc.font('Helvetica-Bold').fontSize(11)
          .fillColor(colIndex === 0 ? '#C62828' : '#333333')
-         .text(day.toString(), cellX + 4, rowY + 3);
+         .text(day.toString(), cellX + 4, currentRowY + 3);
 
       // Eventos del día (expandidos)
       const dayEvents = eventsByDay[day] || [];
       if (dayEvents.length === 0) return;
 
-      const evStartY = rowY + 17;
-      /**
-       * LAYOUT DE EVENTOS EN 2 LÍNEAS:
-       * Línea 1: hora/estado (bold, pequeño)
-       * Línea 2: título COMPLETO del evento (sin truncar)
-       *
-       * Esto permite ver el nombre entero del evento sin puntos suspensivos.
-       * Cada slot de evento ocupa 22px (antes 13px con título truncado).
-       */
-      const eventSlotHeight = 22;
-      const maxEvents = Math.floor((rowHeight - 20) / eventSlotHeight);
-      const eventsToShow = dayEvents.slice(0, maxEvents);
-      const remaining = dayEvents.length - eventsToShow.length;
+      let evY = currentRowY + DAY_NUMBER_HEIGHT;
 
-      eventsToShow.forEach((occ, evIndex) => {
-        const evY = evStartY + (evIndex * eventSlotHeight);
+      dayEvents.forEach((occ) => {
+        const slotH = getSlotHeight(occ);
         const colors = EVENT_COLORS[occ.event_type] || EVENT_COLORS['Otro'];
 
-        // Fondo del evento (ahora más alto para 2 líneas)
-        doc.roundedRect(cellX + 2, evY, colWidth - 4, eventSlotHeight - 2, 2).fill(colors.bg);
+        // Verificar que no nos salgamos de la celda
+        if (evY + slotH > currentRowY + rowHeight) return;
+
+        // Fondo del evento (alto dinámico según tipo)
+        doc.roundedRect(cellX + 2, evY, colWidth - 4, slotH - 2, 2).fill(colors.bg);
 
         // Línea izquierda de color (accent). Doble barra para multi-día
         if (occ.dayType === 'middle') {
-          doc.rect(cellX + 2, evY, 2.5, eventSlotHeight - 2).fill(colors.border);
-          doc.rect(cellX + 5, evY, 1, eventSlotHeight - 2).fill(colors.border);
+          doc.rect(cellX + 2, evY, 2.5, slotH - 2).fill(colors.border);
+          doc.rect(cellX + 5, evY, 1, slotH - 2).fill(colors.border);
         } else {
-          doc.rect(cellX + 2, evY, 2.5, eventSlotHeight - 2).fill(colors.border);
+          doc.rect(cellX + 2, evY, 2.5, slotH - 2).fill(colors.border);
         }
 
-        // Línea 1: Label de hora/estado (bold)
+        // Línea 1: Label de hora/estado (bold, 5pt)
         doc.font('Helvetica-Bold').fontSize(5).fillColor(colors.text)
            .text(occ.label, cellX + 7, evY + 1.5, {
              width: colWidth - 12, lineBreak: false,
            });
 
-        // Línea 2: Título COMPLETO del evento (sin truncar)
+        // Línea 2: Título COMPLETO del evento (sin truncar, 5.5pt)
         doc.font('Helvetica').fontSize(5.5).fillColor(colors.text)
            .text(occ.title, cellX + 7, evY + 9, {
              width: colWidth - 12, lineBreak: false,
            });
-      });
 
-      if (remaining > 0) {
-        const moreY = evStartY + (eventsToShow.length * eventSlotHeight);
-        doc.font('Helvetica-Bold').fontSize(6).fillColor('#666666')
-           .text(`+${remaining} más...`, cellX + 4, moreY + 1, {
-             width: colWidth - 8, align: 'center',
-           });
-      }
+        /**
+         * ROLES DE CULTO (P, D, C):
+         * Si el evento es tipo Culto y tiene roles asignados,
+         * mostrar cada rol en una línea debajo del título.
+         * 
+         * NOTA: No usar continued:true — PDFKit tiene bugs al combinar
+         * fonts con continued. En su lugar, renderizamos cada rol
+         * como un string completo "P: Moises" en una sola llamada .text().
+         */
+        if (occ.cultoRoles && occ.cultoRoles.length > 0) {
+          let roleY = evY + 17; // Debajo del título
+          occ.cultoRoles.forEach((role) => {
+            // Línea completa: "P: Moises" en bold para que sea legible
+            doc.font('Helvetica-Bold').fontSize(6).fillColor('#1A237E')
+               .text(`${role.prefix}: ${role.name}`, cellX + 7, roleY, {
+                 width: colWidth - 12, lineBreak: false,
+               });
+            roleY += 7; // Siguiente línea de rol
+          });
+        }
+
+        evY += slotH; // Avanzar al siguiente slot
+      });
     });
+
+    currentRowY += rowHeight; // Avanzar a la siguiente fila/semana
   });
 
   // =========================================
   // PIE DE PÁGINA: Leyenda
   // =========================================
-  const footerY = gridStartY + (totalWeeks * rowHeight) + 8;
+  const footerY = currentRowY + 6;
 
   doc.font('Helvetica').fontSize(7).fillColor('#666666')
      .text('Leyenda:', startX, footerY);
@@ -341,13 +445,17 @@ function generateCalendarPdf({ year, month, churchName, events }) {
     legendX += type.length * 4.5 + 20;
   });
 
+  // Leyenda de roles de culto
+  doc.font('Helvetica').fontSize(6.5).fillColor('#555')
+     .text('| P: Predica  D: Dirige  C: Canta', legendX + 5, footerY, { lineBreak: false });
+
   const now = new Date();
   const genDate = now.toLocaleDateString('es-ES', {
     year: 'numeric', month: 'long', day: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
   doc.font('Helvetica').fontSize(6.5).fillColor('#999')
-     .text(`Generado: ${genDate}`, startX, footerY, {
+     .text(`Generado: ${genDate}`, startX, footerY + 10, {
        width: pageWidth, align: 'right',
      });
 

@@ -10,6 +10,9 @@ router.get('/', eventController.getAll);
 // Calendario PDF mensual (DEBE ir ANTES de /:id para evitar conflicto de rutas)
 router.get('/calendar-pdf', eventController.generateCalendar);
 
+// Calendario de Ventas PDF anual (DEBE ir ANTES de /:id)
+router.get('/sales-calendar-pdf', eventController.generateSalesCalendar);
+
 router.get('/:id', eventController.getById);
 
 // Crear eventos: Administrador, Secretaría, Líder

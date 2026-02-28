@@ -23,6 +23,7 @@ import {
   Groups as GroupsIcon,
   Badge as BadgeIcon,
   Palette as PaletteIcon,
+  WhatsApp as WhatsAppIcon,
 } from '@mui/icons-material';
 
 /** Definición de menú con roles permitidos.
@@ -35,6 +36,7 @@ const menuItems = [
   { path: '/events', icon: <EventIcon />, label: 'Eventos', roles: ['Administrador', 'Secretaría', 'Líder'] },
   { path: '/attendance', icon: <GroupsIcon />, label: 'Asistencia', roles: ['Administrador', 'Secretaría', 'Líder'] },
   { path: '/minutes', icon: <DescriptionIcon />, label: 'Actas', roles: ['Administrador', 'Secretaría'] },
+  { path: '/notifications', icon: <WhatsAppIcon />, label: 'Notificaciones', roles: ['Administrador', 'Secretaría'] },
   { path: '/positions', icon: <BadgeIcon />, label: 'Cargos', roles: ['Administrador'] },
   { path: '/branding', icon: <PaletteIcon />, label: 'Branding', roles: ['Administrador'] },
   { path: '/users', icon: <AdminIcon />, label: 'Usuarios', roles: ['Administrador'] },

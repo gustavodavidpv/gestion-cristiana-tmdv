@@ -9,7 +9,6 @@
     "install:all": "npm install && cd server && npm install && cd ../client && npm install",
     "db:migrate": "cd server && npm run migrate",
     "db:seed": "cd server && npm run seed",
-
     "-- PRODUCCIÓN --": "--- Scripts para deploy en Render ---",
     "build": "cd client && npm install && npm run build",
     "start": "cd server && node index.js",
@@ -20,5 +19,8 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "node-cron": "^4.2.1"
   }
 }

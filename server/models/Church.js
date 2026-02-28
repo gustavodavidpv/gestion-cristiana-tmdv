@@ -86,6 +86,35 @@ const Church = sequelize.define('Church', {
     allowNull: true,
     comment: 'URL del logo para la pantalla de login',
   },
+
+  // =============================================
+  // CONFIGURACIÓN DE NOTIFICACIONES WHATSAPP
+  // =============================================
+
+  /**
+   * notification_day_before_hour - Hora (0-23) para enviar recordatorio
+   * el DÍA ANTERIOR al culto. Ej: 18 = 6:00 PM.
+   * Si es null, no se envía recordatorio el día anterior.
+   */
+  notification_day_before_hour: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: 18,
+    validate: { min: 0, max: 23 },
+    comment: 'Hora (0-23) para recordatorio del día anterior. null = desactivado.',
+  },
+  /**
+   * notification_same_day_hour - Hora (0-23) para enviar recordatorio
+   * el MISMO DÍA del culto. Ej: 7 = 7:00 AM.
+   * Si es null, no se envía recordatorio el mismo día.
+   */
+  notification_same_day_hour: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: 7,
+    validate: { min: 0, max: 23 },
+    comment: 'Hora (0-23) para recordatorio del mismo día. null = desactivado.',
+  },
 }, {
   tableName: 'churches',
 });
