@@ -55,11 +55,27 @@ Event.belongsTo(Church, { foreignKey: 'church_id', as: 'church' });
 User.hasMany(Event, { foreignKey: 'created_by', as: 'events_created' });
 Event.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
 
+// =============================================
+// ROLES DE CULTO: Event → Member (preacher, worship_leader, singer)
+// Cada rol es una FK opcional a la tabla members.
+// Solo se usan cuando event_type === 'Culto'.
+// constraints: false evita que Sequelize cree FK duplicadas en sync({ alter: true })
+// =============================================
+Member.hasMany(Event, { foreignKey: 'preacher_id', as: 'events_preaching', constraints: false });
+Event.belongsTo(Member, { foreignKey: 'preacher_id', as: 'preacher', constraints: false });
+
+Member.hasMany(Event, { foreignKey: 'worship_leader_id', as: 'events_leading', constraints: false });
+Event.belongsTo(Member, { foreignKey: 'worship_leader_id', as: 'worship_leader', constraints: false });
+
+Member.hasMany(Event, { foreignKey: 'singer_id', as: 'events_singing', constraints: false });
+Event.belongsTo(Member, { foreignKey: 'singer_id', as: 'singer', constraints: false });
+
 // Event <-> EventAttendee <-> Member (N:M)
-Event.hasMany(EventAttendee, { foreignKey: 'event_id', as: 'attendees' });
-EventAttendee.belongsTo(Event, { foreignKey: 'event_id', as: 'event' });
-Member.hasMany(EventAttendee, { foreignKey: 'member_id', as: 'event_attendances' });
-EventAttendee.belongsTo(Member, { foreignKey: 'member_id', as: 'member' });
+// constraints: false evita conflictos con FK manuales creadas en migraciones
+Event.hasMany(EventAttendee, { foreignKey: 'event_id', as: 'attendees', constraints: false });
+EventAttendee.belongsTo(Event, { foreignKey: 'event_id', as: 'event', constraints: false });
+Member.hasMany(EventAttendee, { foreignKey: 'member_id', as: 'event_attendances', constraints: false });
+EventAttendee.belongsTo(Member, { foreignKey: 'member_id', as: 'member', constraints: false });
 
 // Church <-> WeeklyAttendance
 Church.hasMany(WeeklyAttendance, { foreignKey: 'church_id', as: 'weekly_attendances' });
@@ -106,10 +122,8 @@ Church.hasMany(MinisterialPosition, { foreignKey: 'church_id', as: 'ministerial_
 MinisterialPosition.belongsTo(Church, { foreignKey: 'church_id', as: 'church' });
 
 // MinisterialPosition <-> Member (1:N)
-MinisterialPosition.hasMany(Member, { foreignKey: 'position_id', as: 'members', constraints: false, });
-Member.belongsTo(MinisterialPosition, { foreignKey: 'position_id', as: 'position', constraints: false, // ✅ clave para que no toque constraints en sync alter 
-});
-
+MinisterialPosition.hasMany(Member, { foreignKey: 'position_id', as: 'members', constraints: false });
+Member.belongsTo(MinisterialPosition, { foreignKey: 'position_id', as: 'position', constraints: false });
 
 module.exports = {
   sequelize,

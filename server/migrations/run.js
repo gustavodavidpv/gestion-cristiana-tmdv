@@ -204,14 +204,18 @@ const runMigrations = async () => {
     }
 
     // --- 4e. Columna members.church_role ---
+    // Ahora usa VARCHAR(100) para soportar nombres de cargos dinámicos más largos
     try {
       const [crCol] = await sequelize.query(`
         SELECT column_name FROM information_schema.columns
         WHERE table_name = 'members' AND column_name = 'church_role'
       `);
       if (crCol.length === 0) {
-        await sequelize.query(`ALTER TABLE members ADD COLUMN church_role VARCHAR(30) DEFAULT NULL`);
+        await sequelize.query(`ALTER TABLE members ADD COLUMN church_role VARCHAR(100) DEFAULT NULL`);
         console.log('   ✅ Columna members.church_role agregada.');
+      } else {
+        // Ampliar a VARCHAR(100) si ya existía como VARCHAR(30)
+        await sequelize.query(`ALTER TABLE members ALTER COLUMN church_role TYPE VARCHAR(100)`);
       }
     } catch (e) {
       console.warn('   ⚠️  members.church_role:', e.message);
@@ -265,6 +269,66 @@ const runMigrations = async () => {
       }
     } catch (e) {
       console.warn('   ⚠️  weekly_attendances:', e.message);
+    }
+
+    // --- 4h. Columnas de roles de culto en events ---
+    // preacher_id, worship_leader_id, singer_id → FK a members
+    // Estos campos almacenan quién predica (P), dirige (D) y canta (C)
+    // en eventos tipo Culto.
+    const cultoRoleCols = [
+      { col: 'preacher_id', fk: 'events_preacher_id_fkey' },
+      { col: 'worship_leader_id', fk: 'events_worship_leader_id_fkey' },
+      { col: 'singer_id', fk: 'events_singer_id_fkey' },
+    ];
+    for (const { col, fk } of cultoRoleCols) {
+      try {
+        const [colExists] = await sequelize.query(`
+          SELECT column_name FROM information_schema.columns
+          WHERE table_name = 'events' AND column_name = '${col}'
+        `);
+        if (colExists.length === 0) {
+          await sequelize.query(`ALTER TABLE events ADD COLUMN ${col} INTEGER DEFAULT NULL`);
+          console.log(`   ✅ Columna events.${col} agregada.`);
+        }
+        // FK: ON DELETE SET NULL para que si se borra el miembro no se borre el evento
+        const [fkExists] = await sequelize.query(`
+          SELECT constraint_name FROM information_schema.table_constraints
+          WHERE table_name = 'events' AND constraint_type = 'FOREIGN KEY'
+            AND constraint_name = '${fk}'
+        `);
+        if (fkExists.length === 0) {
+          await sequelize.query(`
+            ALTER TABLE events ADD CONSTRAINT ${fk}
+            FOREIGN KEY (${col}) REFERENCES members(id)
+            ON DELETE SET NULL ON UPDATE CASCADE
+          `);
+          console.log(`   ✅ FK events.${col} → members creada.`);
+        }
+      } catch (e) {
+        console.warn(`   ⚠️  events.${col}:`, e.message);
+      }
+    }
+
+    // --- 4i. Columnas de horarios de notificación en churches ---
+    // notification_day_before_hour y notification_same_day_hour
+    // permiten configurar a qué hora se envían los recordatorios WhatsApp
+    const notifCols = [
+      { col: 'notification_day_before_hour', def: '18' },
+      { col: 'notification_same_day_hour', def: '7' },
+    ];
+    for (const { col, def } of notifCols) {
+      try {
+        const [colExists] = await sequelize.query(`
+          SELECT column_name FROM information_schema.columns
+          WHERE table_name = 'churches' AND column_name = '${col}'
+        `);
+        if (colExists.length === 0) {
+          await sequelize.query(`ALTER TABLE churches ADD COLUMN ${col} INTEGER DEFAULT ${def}`);
+          console.log(`   ✅ Columna churches.${col} agregada (default: ${def}).`);
+        }
+      } catch (e) {
+        console.warn(`   ⚠️  churches.${col}:`, e.message);
+      }
     }
 
     // =========================================================
@@ -363,7 +427,8 @@ const runMigrations = async () => {
     console.log('   - members (+ birth_date, church_role, position_id FK → ministerial_positions)');
     console.log('   - ministerial_positions (cargos por iglesia)');
     console.log('   - missions, white_fields');
-    console.log('   - events, event_attendees (UNIQUE event_id + member_id)');
+    console.log('   - events (+ preacher_id, worship_leader_id, singer_id FK → members)');
+    console.log('   - event_attendees (UNIQUE event_id + member_id)');
     console.log('   - weekly_attendances (UNIQUE church_id + week_date)');
     console.log('   - minutes, minute_attendees, motions, motion_voters');
     console.log('   - minute_files (archivos de actas)');

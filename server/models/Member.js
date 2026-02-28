@@ -51,11 +51,11 @@ const Member = sequelize.define('Member', {
     comment: 'Fecha de nacimiento del miembro',
   },
   member_type: {
-    type: DataTypes.STRING(20),
+    type: DataTypes.STRING(30),
     allowNull: false,
     defaultValue: 'Miembro',
     validate: {
-      isIn: [['Miembro', 'Visitante', 'Familiar', 'Infante', 'Otro']],
+      isIn: [['Miembro', 'Visitante', 'Familiar', 'Infante', 'Candidato a bautismo', 'Otro']],
     },
   },
   /**

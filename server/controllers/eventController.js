@@ -3,7 +3,35 @@ const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { recalculateChurchFaithDecisions } = require('../utils/churchStats');
 const { generateCalendarPdf } = require('../utils/calendarPdf');
+const { generateSalesCalendarPdf } = require('../utils/salesCalendarPdf');
 const { isSuperAdmin, applyTenantFilter } = require('../middleware/auth');
+
+/**
+ * Includes comunes para cargar roles de culto junto con cada evento.
+ * Cada rol es un Member opcional (preacher, worship_leader, singer).
+ * Solo tienen sentido cuando event_type === 'Culto'.
+ */
+const CULTO_ROLE_INCLUDES = [
+  { model: Member, as: 'preacher', attributes: ['id', 'first_name', 'last_name', 'phone'] },
+  { model: Member, as: 'worship_leader', attributes: ['id', 'first_name', 'last_name', 'phone'] },
+  { model: Member, as: 'singer', attributes: ['id', 'first_name', 'last_name', 'phone'] },
+];
+
+/**
+ * Sanitiza IDs de roles de culto: '' → null, string → int.
+ * Evita errores de FK cuando el frontend envía strings vacíos.
+ */
+function sanitizeCultoRoles(data) {
+  ['preacher_id', 'worship_leader_id', 'singer_id'].forEach((field) => {
+    if (data[field] === '' || data[field] === undefined) {
+      data[field] = null;
+    } else if (data[field] !== null) {
+      const parsed = parseInt(data[field], 10);
+      data[field] = isNaN(parsed) ? null : parsed;
+    }
+  });
+  return data;
+}
 
 const eventController = {
   // GET /api/events
@@ -29,6 +57,8 @@ const eventController = {
         include: [
           { model: Church, as: 'church', attributes: ['id', 'name'] },
           { model: User, as: 'creator', attributes: ['id', 'full_name'] },
+          // Incluir roles de culto para mostrar en tabla
+          ...CULTO_ROLE_INCLUDES,
         ],
         order: [['start_date', 'DESC']],
         limit: parseInt(limit),
@@ -61,6 +91,8 @@ const eventController = {
             as: 'attendees',
             include: [{ model: Member, as: 'member', attributes: ['id', 'first_name', 'last_name', 'member_type'] }],
           },
+          // Roles de culto
+          ...CULTO_ROLE_INCLUDES,
         ],
       });
 
@@ -77,9 +109,12 @@ const eventController = {
   // POST /api/events
   async create(req, res) {
     try {
+      // Sanitizar IDs de roles de culto ('' → null)
+      const data = sanitizeCultoRoles({ ...req.body });
+
       const event = await Event.create({
-        ...req.body,
-        church_id: req.body.church_id || req.user.church_id,
+        ...data,
+        church_id: data.church_id || req.user.church_id,
         created_by: req.user.id,
       });
 
@@ -97,7 +132,20 @@ const eventController = {
         return res.status(404).json({ message: 'Evento no encontrado.' });
       }
 
-      await event.update(req.body);
+      // Sanitizar IDs de roles de culto ('' → null)
+      const data = sanitizeCultoRoles({ ...req.body });
+
+      /**
+       * Si el tipo de evento cambia de 'Culto' a otro tipo,
+       * limpiar los roles de culto para no dejar datos huérfanos.
+       */
+      if (data.event_type && data.event_type !== 'Culto') {
+        data.preacher_id = null;
+        data.worship_leader_id = null;
+        data.singer_id = null;
+      }
+
+      await event.update(data);
       res.json({ message: 'Evento actualizado exitosamente.', event });
     } catch (error) {
       res.status(500).json({ message: 'Error al actualizar evento.', error: error.message });
@@ -206,8 +254,7 @@ const eventController = {
    * GET /api/events/calendar-pdf?year=2026&month=3
    * 
    * Genera PDF con calendario mensual.
-   * MEJORA: Busca eventos que SOLAPAN el mes (no solo los que empiezan).
-   * Esto captura eventos multi-día que comienzan antes o terminan después.
+   * MEJORA: Incluye roles de culto (P, D, C) para eventos tipo Culto.
    */
   async generateCalendar(req, res) {
     try {
@@ -224,44 +271,38 @@ const eventController = {
       const startDate = new Date(year, month - 1, 1);
       const endDate = new Date(year, month, 0, 23, 59, 59);
 
-      // Buscar eventos que SOLAPAN el mes:
-      // Un evento solapa si: start_date <= fin_del_mes AND (end_date >= inicio_del_mes OR end_date IS NULL)
+      // Buscar eventos que SOLAPAN el mes
       const where = {
         [Op.and]: [
           { start_date: { [Op.lte]: endDate } },
           {
             [Op.or]: [
               { end_date: { [Op.gte]: startDate } },
-              { end_date: null },
+              {
+                [Op.and]: [
+                  { end_date: null },
+                  { start_date: { [Op.gte]: startDate } },
+                ],
+              },
             ],
           },
         ],
       };
-
-      // Para eventos sin end_date, solo incluir si start_date está en el mes
-      // Refinamos: si end_date es null, el evento debe empezar en el mes
-      where[Op.and] = [
-        { start_date: { [Op.lte]: endDate } },
-        {
-          [Op.or]: [
-            { end_date: { [Op.gte]: startDate } },
-            {
-              [Op.and]: [
-                { end_date: null },
-                { start_date: { [Op.gte]: startDate } },
-              ],
-            },
-          ],
-        },
-      ];
 
       // Tenant filtering
       applyTenantFilter(where, req.user);
 
       const events = await Event.findAll({
         where,
+        include: [
+          // Incluir roles de culto para mostrar P:/D:/C: en el PDF
+          ...CULTO_ROLE_INCLUDES,
+        ],
         order: [['start_date', 'ASC']],
-        attributes: ['id', 'title', 'event_type', 'start_date', 'end_date', 'location'],
+        attributes: [
+          'id', 'title', 'event_type', 'start_date', 'end_date', 'location',
+          'preacher_id', 'worship_leader_id', 'singer_id',
+        ],
       });
 
       // Obtener nombre de la iglesia
@@ -280,11 +321,33 @@ const eventController = {
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
 
+      /**
+       * Convertir a JSON plano incluyendo los roles de culto.
+       * El generador PDF necesita: preacher, worship_leader, singer como objetos
+       * con {first_name, last_name} para imprimir P:/D:/C:.
+       */
+      const eventsJson = events.map((e) => {
+        const json = e.toJSON();
+        return {
+          ...json,
+          // Nombres cortos para el PDF (ej: "Moisés", "Xenia")
+          preacher_name: json.preacher
+            ? `${json.preacher.first_name}`
+            : null,
+          worship_leader_name: json.worship_leader
+            ? `${json.worship_leader.first_name}`
+            : null,
+          singer_name: json.singer
+            ? `${json.singer.first_name}`
+            : null,
+        };
+      });
+
       const pdfDoc = generateCalendarPdf({
         year,
         month,
         churchName,
-        events: events.map((e) => e.toJSON()),
+        events: eventsJson,
       });
 
       pdfDoc.pipe(res);
@@ -292,6 +355,69 @@ const eventController = {
     } catch (error) {
       console.error('[CALENDAR PDF ERROR]', error);
       res.status(500).json({ message: 'Error al generar calendario PDF.', error: error.message });
+    }
+  },
+
+  // =========== CALENDARIO DE VENTAS PDF ===========
+
+  /**
+   * GET /api/events/sales-calendar-pdf?year=2026
+   * 
+   * Genera PDF con calendario de ventas anual.
+   * Muestra todos los eventos de tipo "Ventas" del año,
+   * organizados por meses en columnas (estilo poster/cartelera).
+   */
+  async generateSalesCalendar(req, res) {
+    try {
+      const year = parseInt(req.query.year);
+
+      if (!year || year < 2000 || year > 2100) {
+        return res.status(400).json({
+          message: 'Parámetro inválido. Se requiere year (ej: 2026).',
+        });
+      }
+
+      // Rango del año completo
+      const startDate = new Date(year, 0, 1);       // 1 de Enero
+      const endDate = new Date(year, 11, 31, 23, 59, 59); // 31 de Diciembre
+
+      // Buscar SOLO eventos tipo "Ventas" del año
+      const where = {
+        event_type: 'Ventas',
+        start_date: { [Op.between]: [startDate, endDate] },
+      };
+
+      // Tenant filtering
+      applyTenantFilter(where, req.user);
+
+      const events = await Event.findAll({
+        where,
+        order: [['start_date', 'ASC']],
+        attributes: ['id', 'title', 'event_type', 'start_date'],
+      });
+
+      // Obtener nombre de la iglesia
+      let churchName = 'Gestión Cristiana TMDV';
+      if (req.user.church_id) {
+        const church = await Church.findByPk(req.user.church_id, { attributes: ['name'] });
+        if (church) churchName = church.name;
+      }
+
+      const fileName = `Calendario_Ventas_${year}.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+
+      const pdfDoc = generateSalesCalendarPdf({
+        year,
+        churchName,
+        events: events.map((e) => e.toJSON()),
+      });
+
+      pdfDoc.pipe(res);
+
+    } catch (error) {
+      console.error('[SALES CALENDAR PDF ERROR]', error);
+      res.status(500).json({ message: 'Error al generar calendario de ventas PDF.', error: error.message });
     }
   },
 };

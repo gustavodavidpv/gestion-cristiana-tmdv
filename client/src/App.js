@@ -26,6 +26,7 @@ import Users from './pages/Users';
 import WeeklyAttendance from './pages/WeeklyAttendance';
 import MinisterialPositions from './pages/MinisterialPositions';
 import Branding from './pages/Branding';
+import Notifications from './pages/Notifications';
 
 const DRAWER_WIDTH = 260;
 
@@ -100,6 +101,9 @@ function App() {
             } />
             <Route path="/branding" element={
               <ProtectedRoute roles={['Administrador']}><Branding /></ProtectedRoute>
+            } />
+            <Route path="/notifications" element={
+              <ProtectedRoute roles={['Administrador', 'Secretaría']}><Notifications /></ProtectedRoute>
             } />
             <Route path="/users" element={
               <ProtectedRoute roles={['Administrador']}><Users /></ProtectedRoute>

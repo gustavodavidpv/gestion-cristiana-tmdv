@@ -23,8 +23,8 @@ import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Search as SearchIcon,
 } from '@mui/icons-material';
 
-/** Tipos de miembro disponibles (incluye Infante) */
-const MEMBER_TYPES = ['Miembro', 'Visitante', 'Familiar', 'Infante', 'Otro'];
+/** Tipos de miembro disponibles (incluye Infante y Candidato a bautismo) */
+const MEMBER_TYPES = ['Miembro', 'Visitante', 'Familiar', 'Infante', 'Candidato a bautismo', 'Otro'];
 
 const emptyForm = {
   first_name: '', last_name: '', age: '', sex: '', birth_date: '',
@@ -157,7 +157,7 @@ const Members = () => {
   const typeColor = (t) => {
     const map = {
       Miembro: 'primary', Visitante: 'warning', Familiar: 'success',
-      Infante: 'info', Otro: 'default',
+      Infante: 'info', 'Candidato a bautismo': 'secondary', Otro: 'default',
     };
     return map[t] || 'default';
   };
