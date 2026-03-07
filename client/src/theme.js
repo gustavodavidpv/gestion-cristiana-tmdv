@@ -1,9 +1,10 @@
 /**
  * theme.js - Configuración del tema MUI para Gestión Cristiana TMDV
- * 
+ *
  * Paleta principal: Azul (#1565C0) y Blanco
  * Tipografía: Segoe UI / system fonts
  * Estilo: Clean, profesional, moderno
+ * Responsive: Overrides para móvil (padding, diálogos, touch targets)
  */
 import { createTheme } from '@mui/material/styles';
 
@@ -74,6 +75,13 @@ const theme = createTheme({
           backgroundColor: '#F5F7FA',
           color: '#424242',
         },
+        // Padding reducido en móvil para tablas más compactas
+        root: {
+          '@media (max-width: 600px)': {
+            padding: '8px 6px',
+            fontSize: '0.8125rem',
+          },
+        },
       },
     },
     MuiChip: {
@@ -87,6 +95,22 @@ const theme = createTheme({
       styleOverrides: {
         paper: {
           borderRadius: 12,
+          // Márgenes reducidos en móvil para mejor aprovechamiento del espacio
+          '@media (max-width: 600px)': {
+            margin: 16,
+            maxHeight: 'calc(100% - 32px)',
+          },
+        },
+      },
+    },
+    // IconButtons con tamaño mínimo para touch en móvil
+    MuiIconButton: {
+      styleOverrides: {
+        root: {
+          '@media (max-width: 600px)': {
+            minWidth: 40,
+            minHeight: 40,
+          },
         },
       },
     },

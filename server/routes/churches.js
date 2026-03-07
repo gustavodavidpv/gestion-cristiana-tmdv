@@ -7,6 +7,8 @@ router.use(authenticate);
 
 // Iglesias
 router.get('/', churchController.getAll);
+// Estadísticas del dashboard para SuperAdmin (DEBE ir ANTES de /:id)
+router.get('/stats/dashboard', authorize('SuperAdmin'), churchController.getDashboardStats);
 router.get('/:id', churchController.getById);
 // Solo SuperAdmin puede CREAR y ELIMINAR iglesias (authorize bypasses SuperAdmin)
 router.post('/', authorize('SuperAdmin'), churchController.create);
