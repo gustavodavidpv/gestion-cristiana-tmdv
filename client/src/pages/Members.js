@@ -1,6 +1,6 @@
 /**
  * Members.js - CRUD de miembros con MUI
- * 
+ *
  * Incluye:
  * - Campo 'birth_date' (fecha de nacimiento, opcional)
  * - Tipo 'Infante' adicional a Miembro, Visitante, Familiar, Otro
@@ -8,16 +8,21 @@
  *   vía GET /api/ministerial-positions. Los cargos creados en esa sección
  *   se reflejan automáticamente en el select de este formulario.
  * - Al crear/eliminar un miembro se recalcula membership_count
+ *
+ * SUPERADMIN: Usa ChurchSelector para seleccionar iglesia primero.
+ * Al entrar a una iglesia, los miembros se filtran por church_id.
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-toastify';
+import ChurchSelector from '../components/layout/ChurchSelector';
 import {
   Box, Paper, Typography, Button, TextField, Select, MenuItem, FormControl,
   InputLabel, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   IconButton, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
   Grid, FormControlLabel, Checkbox, CircularProgress, InputAdornment, TablePagination,
+  useMediaQuery, useTheme,
 } from '@mui/material';
 import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Search as SearchIcon,
@@ -38,8 +43,14 @@ const emptyForm = {
   phone: '', email: '', address: '',
 };
 
-const Members = () => {
+/**
+ * MembersContent - Contenido principal del módulo de miembros.
+ * Recibe churchId y churchName del ChurchSelector (null si no es SuperAdmin).
+ */
+const MembersContent = ({ churchId, churchName, backButton }) => {
   const { hasRole } = useAuth();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [members, setMembers] = useState([]);
   const [pagination, setPagination] = useState({ page: 0, total: 0 });
   const [search, setSearch] = useState('');
@@ -62,10 +73,13 @@ const Members = () => {
   /**
    * Se cargan al montar el componente para tener disponibles
    * tanto en los filtros como en el formulario de crear/editar.
+   * Si churchId está disponible (SuperAdmin), se pasa como filtro.
    */
   const loadPositions = useCallback(async () => {
     try {
-      const { data } = await api.get('/ministerial-positions');
+      const params = {};
+      if (churchId) params.church_id = churchId;
+      const { data } = await api.get('/ministerial-positions', { params });
       // Filtrar solo cargos activos para el select
       const active = (data.positions || []).filter((p) => p.is_active);
       setPositions(active);
@@ -73,7 +87,7 @@ const Members = () => {
       console.error('Error al cargar cargos ministeriales:', error);
       // Si falla, el select mostrará solo "Sin cargo"
     }
-  }, []);
+  }, [churchId]);
 
   useEffect(() => { loadPositions(); }, [loadPositions]);
 
@@ -82,6 +96,8 @@ const Members = () => {
     setLoading(true);
     try {
       const params = { page: page + 1, limit: 15 };
+      // SuperAdmin: filtrar por la iglesia seleccionada
+      if (churchId) params.church_id = churchId;
       if (search) params.search = search;
       if (filterType) params.member_type = filterType;
       // Filtrar por position_id (cargo ministerial dinámico)
@@ -94,7 +110,7 @@ const Members = () => {
     } finally {
       setLoading(false);
     }
-  }, [search, filterType, filterPosition]);
+  }, [search, filterType, filterPosition, churchId]);
 
   useEffect(() => { loadMembers(); }, [loadMembers]);
 
@@ -107,6 +123,10 @@ const Members = () => {
         ...form,
         position_id: form.position_id || null,
       };
+      // SuperAdmin: enviar church_id explícitamente al crear
+      if (churchId && !editing) {
+        payload.church_id = churchId;
+      }
 
       if (editing) {
         await api.put(`/members/${editing.id}`, payload);
@@ -193,16 +213,21 @@ const Members = () => {
 
   return (
     <Box>
+      {/* Botón volver (solo SuperAdmin con iglesia seleccionada) */}
+      {backButton}
+
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1 }}>
-        <Typography variant="h5" fontWeight={700}>Miembros</Typography>
+        <Typography variant="h5" fontWeight={700}>
+          Miembros{churchName ? ` — ${churchName}` : ''}
+        </Typography>
         {hasRole('Administrador', 'Secretaría', 'Líder') && (
           <Button variant="contained" startIcon={<AddIcon />} onClick={openNew}>Nuevo Miembro</Button>
         )}
       </Box>
 
       {/* Filtros */}
-      <Paper sx={{ p: 2, mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+      <Paper sx={{ p: 2, mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap', flexDirection: { xs: 'column', sm: 'row' } }}>
         <TextField size="small" placeholder="Buscar por nombre o email..."
           value={search} onChange={(e) => setSearch(e.target.value)}
           InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
@@ -290,7 +315,8 @@ const Members = () => {
       </Paper>
 
       {/* ===== DIALOG CREAR/EDITAR ===== */}
-      <Dialog open={showModal} onClose={() => setShowModal(false)} maxWidth="sm" fullWidth>
+      <Dialog open={showModal} onClose={() => setShowModal(false)} maxWidth="sm" fullWidth
+        fullScreen={isMobile}>
         <form onSubmit={handleSubmit}>
           <DialogTitle>{editing ? 'Editar Miembro' : 'Nuevo Miembro'}</DialogTitle>
           <DialogContent dividers>
@@ -394,6 +420,25 @@ const Members = () => {
         </form>
       </Dialog>
     </Box>
+  );
+};
+
+/**
+ * Members - Componente principal.
+ * Usa ChurchSelector para que SuperAdmin seleccione iglesia primero.
+ * Para otros roles, renderiza MembersContent directamente.
+ */
+const Members = () => {
+  return (
+    <ChurchSelector title="Miembros">
+      {({ churchId, churchName, backButton }) => (
+        <MembersContent
+          churchId={churchId}
+          churchName={churchName}
+          backButton={backButton}
+        />
+      )}
+    </ChurchSelector>
   );
 };
 

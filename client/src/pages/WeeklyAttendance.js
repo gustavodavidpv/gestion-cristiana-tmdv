@@ -1,30 +1,43 @@
 /**
  * WeeklyAttendance.js - Registro de asistencia semanal con MUI
- * 
+ *
  * Funcionalidades:
  * - Tabla de registros semanales con paginación
  * - Formulario para registrar asistencia de una semana
  * - Muestra el promedio actual (calculado automáticamente)
  * - Filtro por año
  * - Editar y eliminar registros existentes
+ *
+ * PATRÓN SUPERADMIN:
+ * - SuperAdmin ve primero la lista de iglesias (ChurchSelector)
+ * - Al seleccionar una iglesia, ve los registros de esa iglesia
+ * - Otros roles ven directamente los registros de su iglesia
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-toastify';
+import ChurchSelector from '../components/layout/ChurchSelector';
 import {
   Box, Paper, Typography, Button, TextField, Select, MenuItem, FormControl,
   InputLabel, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
-  Grid, CircularProgress, TablePagination, Chip, Alert, Divider,
+  Grid, CircularProgress, TablePagination, Chip, Alert, useMediaQuery, useTheme,
 } from '@mui/material';
 import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon,
   TrendingUp as TrendingUpIcon, Groups as GroupsIcon,
 } from '@mui/icons-material';
 
-const WeeklyAttendance = () => {
+// ========================================================
+// CONTENIDO PRINCIPAL: Tabla de asistencia semanal
+// Recibe churchId y churchName del ChurchSelector
+// ========================================================
+const WeeklyAttendanceContent = ({ churchId, churchName, backButton }) => {
   const { hasRole } = useAuth();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
   const [records, setRecords] = useState([]);
   const [avgAttendance, setAvgAttendance] = useState(0);
   const [pagination, setPagination] = useState({ page: 0, total: 0 });
@@ -48,6 +61,8 @@ const WeeklyAttendance = () => {
     try {
       const params = { page: page + 1, limit: 52 };
       if (filterYear) params.year = filterYear;
+      // SuperAdmin: pasar church_id para consultar iglesia seleccionada
+      if (churchId) params.church_id = churchId;
 
       const { data } = await api.get('/weekly-attendance', { params });
       setRecords(data.records);
@@ -58,7 +73,7 @@ const WeeklyAttendance = () => {
     } finally {
       setLoading(false);
     }
-  }, [filterYear]);
+  }, [filterYear, churchId]);
 
   useEffect(() => { loadRecords(); }, [loadRecords]);
 
@@ -89,12 +104,16 @@ const WeeklyAttendance = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      // SuperAdmin: incluir church_id en el body al crear
+      const body = { ...form };
+      if (churchId && !editing) body.church_id = churchId;
+
       if (editing) {
-        const { data } = await api.put(`/weekly-attendance/${editing.id}`, form);
+        const { data } = await api.put(`/weekly-attendance/${editing.id}`, body);
         toast.success('Registro actualizado');
         setAvgAttendance(data.avg_weekly_attendance);
       } else {
-        const { data } = await api.post('/weekly-attendance', form);
+        const { data } = await api.post('/weekly-attendance', body);
         toast.success('Asistencia registrada');
         setAvgAttendance(data.avg_weekly_attendance);
       }
@@ -131,9 +150,14 @@ const WeeklyAttendance = () => {
 
   return (
     <Box>
+      {/* Botón volver (solo SuperAdmin con iglesia seleccionada) */}
+      {backButton}
+
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1 }}>
-        <Typography variant="h5" fontWeight={700}>Asistencia Semanal</Typography>
+        <Typography variant="h5" fontWeight={700}>
+          {churchName ? `Asistencia Semanal — ${churchName}` : 'Asistencia Semanal'}
+        </Typography>
         {hasRole('Administrador', 'Secretaría', 'Líder') && (
           <Button variant="contained" startIcon={<AddIcon />} onClick={openNew}>
             Registrar Semana
@@ -263,7 +287,8 @@ const WeeklyAttendance = () => {
       </Paper>
 
       {/* ===== DIALOG CREAR/EDITAR ===== */}
-      <Dialog open={showModal} onClose={() => setShowModal(false)} maxWidth="xs" fullWidth>
+      <Dialog open={showModal} onClose={() => setShowModal(false)} maxWidth="xs" fullWidth
+        fullScreen={isMobile}>
         <form onSubmit={handleSubmit}>
           <DialogTitle>{editing ? 'Editar Registro' : 'Registrar Asistencia Semanal'}</DialogTitle>
           <DialogContent dividers>
@@ -309,5 +334,21 @@ const WeeklyAttendance = () => {
     </Box>
   );
 };
+
+// ========================================================
+// COMPONENTE PRINCIPAL: Envuelve con ChurchSelector
+// SuperAdmin ve lista de iglesias primero
+// ========================================================
+const WeeklyAttendance = () => (
+  <ChurchSelector title="Asistencia Semanal">
+    {({ churchId, churchName, backButton }) => (
+      <WeeklyAttendanceContent
+        churchId={churchId}
+        churchName={churchName}
+        backButton={backButton}
+      />
+    )}
+  </ChurchSelector>
+);
 
 export default WeeklyAttendance;

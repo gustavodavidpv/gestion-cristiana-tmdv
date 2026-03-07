@@ -1,7 +1,110 @@
 const { Church, Mission, WhiteField, Member } = require('../models');
 const { isSuperAdmin } = require('../middleware/auth');
+const { sequelize } = require('../config/database');
 
 const churchController = {
+  /**
+   * GET /api/churches/stats/dashboard?year=YYYY
+   *
+   * Endpoint exclusivo para SuperAdmin.
+   * Retorna estadísticas agregadas de TODAS las iglesias para el dashboard.
+   *
+   * Estadísticas por iglesia:
+   * - membership_count: del modelo Church (NO filtrado por año)
+   * - events_count: cantidad de eventos del año
+   * - minutes_count: cantidad de actas del año
+   * - faith_decisions: decisiones de fe del año
+   * - avg_weekly_attendance: promedio de asistencia semanal del año
+   * - ordained_preachers, unordained_preachers: del modelo Church (no filtrado)
+   * - ordained_deacons, unordained_deacons: del modelo Church (no filtrado)
+   */
+  async getDashboardStats(req, res) {
+    try {
+      // Solo SuperAdmin puede acceder
+      if (!isSuperAdmin(req.user)) {
+        return res.status(403).json({ message: 'Acceso denegado.' });
+      }
+
+      const year = parseInt(req.query.year) || new Date().getFullYear();
+      const startOfYear = `${year}-01-01`;
+      const endOfYear = `${year}-12-31 23:59:59`;
+
+      // Query única con LEFT JOINs para eficiencia (evita N+1)
+      const stats = await sequelize.query(`
+        SELECT
+          c.id,
+          c.name,
+          c.responsible,
+          c.membership_count,
+          c.ordained_preachers,
+          c.unordained_preachers,
+          c.ordained_deacons,
+          c.unordained_deacons,
+          COALESCE(ev.events_count, 0) AS events_count,
+          COALESCE(mn.minutes_count, 0) AS minutes_count,
+          COALESCE(fd.faith_decisions, 0) AS faith_decisions,
+          COALESCE(wa.avg_attendance, 0) AS avg_weekly_attendance
+        FROM churches c
+        LEFT JOIN (
+          SELECT church_id, COUNT(*) AS events_count
+          FROM events
+          WHERE start_date BETWEEN :startOfYear AND :endOfYear
+          GROUP BY church_id
+        ) ev ON ev.church_id = c.id
+        LEFT JOIN (
+          SELECT church_id, COUNT(*) AS minutes_count
+          FROM minutes
+          WHERE meeting_date BETWEEN :startDate AND :endDate
+          GROUP BY church_id
+        ) mn ON mn.church_id = c.id
+        LEFT JOIN (
+          SELECT e.church_id, COUNT(*) AS faith_decisions
+          FROM event_attendees ea
+          JOIN events e ON ea.event_id = e.id
+          WHERE ea.made_faith_decision = true
+            AND e.start_date BETWEEN :startOfYear AND :endOfYear
+          GROUP BY e.church_id
+        ) fd ON fd.church_id = c.id
+        LEFT JOIN (
+          SELECT church_id, ROUND(AVG(attendance_count)) AS avg_attendance
+          FROM weekly_attendances
+          WHERE week_date BETWEEN :startDate AND :endDate
+          GROUP BY church_id
+        ) wa ON wa.church_id = c.id
+        ORDER BY c.name ASC
+      `, {
+        replacements: {
+          startOfYear,
+          endOfYear,
+          startDate: startOfYear,
+          endDate: `${year}-12-31`,
+        },
+        type: sequelize.QueryTypes.SELECT,
+      });
+
+      // Parsear valores numéricos (PostgreSQL retorna strings en raw queries)
+      const parsedStats = stats.map((row) => ({
+        id: row.id,
+        name: row.name,
+        responsible: row.responsible,
+        membership_count: parseInt(row.membership_count) || 0,
+        events_count: parseInt(row.events_count) || 0,
+        minutes_count: parseInt(row.minutes_count) || 0,
+        faith_decisions: parseInt(row.faith_decisions) || 0,
+        avg_weekly_attendance: parseInt(row.avg_weekly_attendance) || 0,
+        ordained_preachers: parseInt(row.ordained_preachers) || 0,
+        unordained_preachers: parseInt(row.unordained_preachers) || 0,
+        ordained_deacons: parseInt(row.ordained_deacons) || 0,
+        unordained_deacons: parseInt(row.unordained_deacons) || 0,
+      }));
+
+      res.json({ stats: parsedStats, year });
+    } catch (error) {
+      console.error('[DASHBOARD STATS] Error:', error.message);
+      res.status(500).json({ message: 'Error al obtener estadísticas del dashboard.', error: error.message });
+    }
+  },
+
   // GET /api/churches
   // SuperAdmin: lista todas. Admin: solo su iglesia.
   async getAll(req, res) {

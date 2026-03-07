@@ -18,3 +18,30 @@ body {
 
 /* Transición suave en links */
 a { transition: color 0.2s ease; }
+
+/* ============================================
+   Responsive Mobile (max-width: 600px)
+   ============================================ */
+@media (max-width: 600px) {
+  /* Touch targets mínimos de 44px en botones de acción */
+  .MuiIconButton-root {
+    min-width: 40px;
+    min-height: 40px;
+  }
+
+  /* Tablas más compactas en móvil */
+  .MuiTableCell-root {
+    padding: 8px 6px;
+  }
+
+  /* Diálogos con menos margen */
+  .MuiDialog-paper {
+    margin: 16px !important;
+  }
+
+  /* Evitar overflow horizontal en tablas */
+  .MuiTableContainer-root {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}

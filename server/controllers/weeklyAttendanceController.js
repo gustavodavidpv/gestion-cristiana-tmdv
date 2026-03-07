@@ -9,6 +9,7 @@
 const { WeeklyAttendance, Church, User } = require('../models');
 const { Op } = require('sequelize');
 const { recalculateAvgWeeklyAttendance } = require('../utils/churchStats');
+const { isSuperAdmin } = require('../middleware/auth');
 
 const weeklyAttendanceController = {
   /**
@@ -18,11 +19,18 @@ const weeklyAttendanceController = {
    */
   async getAll(req, res) {
     try {
-      const { year, page = 1, limit = 52 } = req.query;
-      const churchId = req.user.church_id;
+      const { church_id, year, page = 1, limit = 52 } = req.query;
+
+      // Determinar churchId: parámetro explícito > iglesia del usuario
+      const churchId = church_id ? parseInt(church_id) : req.user.church_id;
 
       if (!churchId) {
-        return res.status(400).json({ message: 'No tiene iglesia asignada.' });
+        return res.status(400).json({ message: 'Se requiere church_id.' });
+      }
+
+      // Non-SuperAdmin no puede consultar otras iglesias
+      if (!isSuperAdmin(req.user) && churchId !== req.user.church_id) {
+        return res.status(403).json({ message: 'No tiene acceso a esta iglesia.' });
       }
 
       const where = { church_id: churchId };
@@ -74,11 +82,18 @@ const weeklyAttendanceController = {
    */
   async create(req, res) {
     try {
-      const { week_date, attendance_count, notes } = req.body;
-      const churchId = req.user.church_id;
+      const { week_date, attendance_count, notes, church_id } = req.body;
+
+      // SuperAdmin puede especificar church_id explícitamente
+      const churchId = church_id ? parseInt(church_id) : req.user.church_id;
 
       if (!churchId) {
-        return res.status(400).json({ message: 'No tiene iglesia asignada.' });
+        return res.status(400).json({ message: 'Se requiere church_id.' });
+      }
+
+      // Non-SuperAdmin no puede crear en otras iglesias
+      if (!isSuperAdmin(req.user) && churchId !== req.user.church_id) {
+        return res.status(403).json({ message: 'No tiene acceso a esta iglesia.' });
       }
 
       // Validar datos
@@ -135,8 +150,8 @@ const weeklyAttendanceController = {
         return res.status(404).json({ message: 'Registro no encontrado.' });
       }
 
-      // Verificar que pertenezca a la iglesia del usuario
-      if (record.church_id !== req.user.church_id && req.user.role.name !== 'Administrador') {
+      // Verificar que pertenezca a la iglesia del usuario (SuperAdmin tiene acceso total)
+      if (!isSuperAdmin(req.user) && record.church_id !== req.user.church_id) {
         return res.status(403).json({ message: 'No tiene permiso para editar este registro.' });
       }
 
@@ -187,8 +202,8 @@ const weeklyAttendanceController = {
         return res.status(404).json({ message: 'Registro no encontrado.' });
       }
 
-      // Verificar permisos
-      if (record.church_id !== req.user.church_id && req.user.role.name !== 'Administrador') {
+      // Verificar permisos (SuperAdmin tiene acceso total)
+      if (!isSuperAdmin(req.user) && record.church_id !== req.user.church_id) {
         return res.status(403).json({ message: 'No tiene permiso para eliminar este registro.' });
       }
 

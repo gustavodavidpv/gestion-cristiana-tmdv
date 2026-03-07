@@ -1,23 +1,27 @@
 /**
  * Events.js - Gestión de eventos con asistencia y decisiones de fe (MUI)
- * 
+ *
  * FIXES IMPLEMENTADOS:
  * 1. Prevención de duplicados en frontend (deduplicación por member_id)
  * 2. El backend usa REPLACE strategy (borra + inserta) con transacción
  * 3. Contadores de asistencia y decisiones de fe se calculan en tiempo real
  * 4. Las decisiones de fe se propagan automáticamente a la iglesia
+ *
+ * SUPERADMIN: Usa ChurchSelector para seleccionar iglesia primero.
+ * Al entrar a una iglesia, los eventos se filtran por church_id.
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-toastify';
+import ChurchSelector from '../components/layout/ChurchSelector';
 import {
   Box, Paper, Typography, Button, TextField, Select, MenuItem, FormControl,
   InputLabel, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   IconButton, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
   Grid, CircularProgress, TablePagination, InputAdornment, Divider,
-  List, ListItem, ListItemText, ListItemSecondaryAction, Checkbox,
-  Alert,
+  List, ListItem, ListItemText, Checkbox,
+  Alert, useMediaQuery, useTheme,
 } from '@mui/material';
 import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon,
@@ -30,8 +34,14 @@ import {
 
 const EVENT_TYPES = ['Evangelismo', 'Culto', 'Reunión', 'Jornada', 'Conferencia', 'Campamento', 'Ventas', 'Otro'];
 
-const Events = () => {
+/**
+ * EventsContent - Contenido principal del módulo de eventos.
+ * Recibe churchId y churchName del ChurchSelector (null si no es SuperAdmin).
+ */
+const EventsContent = ({ churchId, churchName, backButton }) => {
   const { hasRole } = useAuth();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [events, setEvents] = useState([]);
   const [pagination, setPagination] = useState({ page: 0, total: 0 });
   const [loading, setLoading] = useState(true);
@@ -76,7 +86,10 @@ const Events = () => {
   const loadEvents = useCallback(async (page = 0) => {
     setLoading(true);
     try {
-      const { data } = await api.get('/events', { params: { page: page + 1, limit: 15 } });
+      const params = { page: page + 1, limit: 15 };
+      // SuperAdmin: filtrar por la iglesia seleccionada
+      if (churchId) params.church_id = churchId;
+      const { data } = await api.get('/events', { params });
       setEvents(data.events);
       setPagination({ page, total: data.pagination.total });
     } catch (error) {
@@ -84,7 +97,7 @@ const Events = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [churchId]);
 
   useEffect(() => { loadEvents(); }, [loadEvents]);
 
@@ -94,22 +107,30 @@ const Events = () => {
    */
   const loadCultoMembers = useCallback(async () => {
     try {
-      const { data } = await api.get('/members', { params: { limit: 500 } });
+      const params = { limit: 500 };
+      if (churchId) params.church_id = churchId;
+      const { data } = await api.get('/members', { params });
       setCultoMembers(data.members || []);
     } catch (error) {
       console.error('Error al cargar miembros para roles de culto:', error);
     }
-  }, []);
+  }, [churchId]);
 
   // ===== CRUD DE EVENTOS =====
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      const payload = { ...form };
+      // SuperAdmin: enviar church_id explícitamente al crear
+      if (churchId && !editing) {
+        payload.church_id = churchId;
+      }
+
       if (editing) {
-        await api.put(`/events/${editing.id}`, form);
+        await api.put(`/events/${editing.id}`, payload);
         toast.success('Evento actualizado');
       } else {
-        await api.post('/events', form);
+        await api.post('/events', payload);
         toast.success('Evento creado');
       }
       setShowModal(false);
@@ -162,16 +183,19 @@ const Events = () => {
 
   /**
    * Abre el modal de asistentes cargando:
-   * 1. Todos los miembros disponibles
+   * 1. Todos los miembros disponibles (filtrados por iglesia si aplica)
    * 2. Los asistentes ya registrados en el evento
    */
   const openAttendees = async (event) => {
     setSelectedEvent(event);
     setMemberSearch('');
     try {
+      const membersParams = { limit: 500 };
+      if (churchId) membersParams.church_id = churchId;
+
       // Cargar miembros y detalle del evento en paralelo
       const [membersRes, eventRes] = await Promise.all([
-        api.get('/members', { params: { limit: 500 } }),
+        api.get('/members', { params: membersParams }),
         api.get(`/events/${event.id}`),
       ]);
 
@@ -296,8 +320,10 @@ const Events = () => {
   const downloadCalendarPdf = async () => {
     setDownloadingPdf(true);
     try {
+      const params = { year: calendarYear, month: calendarMonth };
+      if (churchId) params.church_id = churchId;
       const response = await api.get('/events/calendar-pdf', {
-        params: { year: calendarYear, month: calendarMonth },
+        params,
         responseType: 'blob', // Importante: recibir como binario
       });
 
@@ -330,8 +356,10 @@ const Events = () => {
   const downloadSalesCalendarPdf = async () => {
     setDownloadingSalesPdf(true);
     try {
+      const params = { year: salesCalendarYear };
+      if (churchId) params.church_id = churchId;
       const response = await api.get('/events/sales-calendar-pdf', {
-        params: { year: salesCalendarYear },
+        params,
         responseType: 'blob',
       });
 
@@ -372,9 +400,14 @@ const Events = () => {
 
   return (
     <Box>
+      {/* Botón volver (solo SuperAdmin con iglesia seleccionada) */}
+      {backButton}
+
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1 }}>
-        <Typography variant="h5" fontWeight={700}>Eventos</Typography>
+        <Typography variant="h5" fontWeight={700}>
+          Eventos{churchName ? ` — ${churchName}` : ''}
+        </Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           {/* Botón Calendario PDF mensual */}
           <Button variant="outlined" startIcon={<CalendarIcon />}
@@ -482,7 +515,8 @@ const Events = () => {
       </Paper>
 
       {/* ===== DIALOG CREAR/EDITAR EVENTO ===== */}
-      <Dialog open={showModal} onClose={() => setShowModal(false)} maxWidth="sm" fullWidth>
+      <Dialog open={showModal} onClose={() => setShowModal(false)} maxWidth="sm" fullWidth
+        fullScreen={isMobile}>
         <form onSubmit={handleSubmit}>
           <DialogTitle>{editing ? 'Editar Evento' : 'Nuevo Evento'}</DialogTitle>
           <DialogContent dividers>
@@ -595,7 +629,7 @@ const Events = () => {
 
       {/* ===== DIALOG ASISTENTES ===== */}
       <Dialog open={showAttendeesModal} onClose={() => setShowAttendeesModal(false)}
-        maxWidth="md" fullWidth fullScreen={window.innerWidth < 600}>
+        maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ pb: 0 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <Box>
@@ -785,6 +819,24 @@ const Events = () => {
         </DialogActions>
       </Dialog>
     </Box>
+  );
+};
+
+/**
+ * Events - Componente principal.
+ * Usa ChurchSelector para que SuperAdmin seleccione iglesia primero.
+ */
+const Events = () => {
+  return (
+    <ChurchSelector title="Eventos">
+      {({ churchId, churchName, backButton }) => (
+        <EventsContent
+          churchId={churchId}
+          churchName={churchName}
+          backButton={backButton}
+        />
+      )}
+    </ChurchSelector>
   );
 };
 
