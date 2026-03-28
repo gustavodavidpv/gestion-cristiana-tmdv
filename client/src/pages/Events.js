@@ -22,6 +22,7 @@ import {
   Grid, CircularProgress, TablePagination, InputAdornment, Divider,
   List, ListItem, ListItemText, Checkbox,
   Alert, useMediaQuery, useTheme,
+  ToggleButton, ToggleButtonGroup, Tooltip,
 } from '@mui/material';
 import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon,
@@ -30,9 +31,155 @@ import {
   Close as CloseIcon, SelectAll as SelectAllIcon,
   CalendarMonth as CalendarIcon,
   Storefront as StorefrontIcon,
+  ChevronLeft as ChevronLeftIcon, ChevronRight as ChevronRightIcon,
+  ViewList as ViewListIcon, TableChart as TableIcon,
+  Today as TodayIcon,
 } from '@mui/icons-material';
 
 const EVENT_TYPES = ['Evangelismo', 'Culto', 'Reunión', 'Jornada', 'Conferencia', 'Campamento', 'Ventas', 'Otro'];
+
+// =============================================
+// CONSTANTES Y UTILIDADES PARA VISTA DE CALENDARIO
+// =============================================
+
+/** Colores de fondo/texto/borde por tipo de evento (replicados del PDF calendarPdf.js) */
+const EVENT_COLORS = {
+  'Evangelismo':  { bg: '#E8F5E9', text: '#1B5E20', border: '#66BB6A' },
+  'Culto':        { bg: '#E3F2FD', text: '#0D47A1', border: '#42A5F5' },
+  'Reunión':      { bg: '#FFF3E0', text: '#E65100', border: '#FFA726' },
+  'Jornada':      { bg: '#F3E5F5', text: '#4A148C', border: '#AB47BC' },
+  'Conferencia':  { bg: '#FCE4EC', text: '#880E4F', border: '#EC407A' },
+  'Campamento':   { bg: '#E0F7FA', text: '#006064', border: '#26C6DA' },
+  'Ventas':       { bg: '#FFF8E1', text: '#F57F17', border: '#FFB300' },
+  'Otro':         { bg: '#F5F5F5', text: '#424242', border: '#BDBDBD' },
+};
+
+/** Nombres cortos de días para el header del calendario (Domingo = index 0) */
+const DAY_NAMES_SHORT = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+
+/** Nombres completos de meses en español para la navegación */
+const MONTH_NAMES_FULL = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+];
+
+/**
+ * Genera la grilla del calendario para un mes dado.
+ * Retorna un array de semanas, donde cada semana es un array de 7 elementos
+ * (Dom=0 a Sáb=6) con el número de día o null si no pertenece al mes.
+ *
+ * Portado de server/utils/calendarPdf.js:getCalendarGrid
+ *
+ * @param {number} year - Año (ej: 2026)
+ * @param {number} month - Mes (1-12)
+ * @returns {Array<Array<number|null>>} Semanas del mes
+ */
+function getCalendarGrid(year, month) {
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const weeks = [];
+  let currentWeek = new Array(7).fill(null);
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dow = new Date(year, month - 1, day).getDay(); // 0=Dom, 6=Sáb
+    currentWeek[dow] = day;
+    // Cerrar semana al llegar a Sábado o al último día del mes
+    if (dow === 6 || day === daysInMonth) {
+      weeks.push([...currentWeek]);
+      currentWeek = new Array(7).fill(null);
+    }
+  }
+  return weeks;
+}
+
+/**
+ * Formatea hora de un Date como HH:MM (24h).
+ * @param {string|Date} date - Fecha/hora
+ * @returns {string} Hora formateada
+ */
+function formatTimeShort(date) {
+  const d = new Date(date);
+  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+}
+
+/**
+ * Expande un evento en "ocurrencias" por día para la vista de calendario.
+ * Maneja eventos de un solo día y eventos multi-día con indicadores visuales.
+ *
+ * Portado y simplificado de server/utils/calendarPdf.js:expandEventToDays
+ *
+ * Reglas:
+ * - Mismo día: label = "HH:MM-HH:MM", dayType = 'single'
+ * - Primer día: label = "HH:MM ▶", dayType = 'start'
+ * - Días intermedios: label = "completo", dayType = 'middle'
+ * - Último día: label = "▶ HH:MM", dayType = 'end'
+ *
+ * @param {Object} ev - Evento completo del API (con start_date, end_date, title, event_type, etc.)
+ * @param {number} year - Año del calendario
+ * @param {number} month - Mes del calendario (1-12)
+ * @returns {Array} Ocurrencias: { day, label, title, event_type, dayType, sortTime, event }
+ */
+function expandEventToDays(ev, year, month) {
+  const start = new Date(ev.start_date);
+  const end = ev.end_date ? new Date(ev.end_date) : start;
+
+  // Comparar solo fechas (sin hora) para determinar si es multi-día
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  const isSameDay = startDay.getTime() === endDay.getTime();
+
+  const occurrences = [];
+  const firstDayOfMonth = new Date(year, month - 1, 1);
+  const lastDayOfMonth = new Date(year, month, 0);
+
+  // Iterar desde el mayor entre startDay y el inicio del mes,
+  // hasta el menor entre endDay y el fin del mes
+  let current = new Date(Math.max(startDay.getTime(), firstDayOfMonth.getTime()));
+  const limit = new Date(Math.min(endDay.getTime(), lastDayOfMonth.getTime()));
+
+  while (current <= limit) {
+    const day = current.getDate();
+    const isFirstDay = current.getTime() === startDay.getTime();
+    const isLastDay = current.getTime() === endDay.getTime();
+
+    let label, dayType, sortTime;
+
+    if (isSameDay) {
+      // Evento de un solo día: mostrar hora inicio-fin
+      const startT = formatTimeShort(start);
+      const endT = ev.end_date ? `-${formatTimeShort(end)}` : '';
+      label = `${startT}${endT}`;
+      dayType = 'single';
+      sortTime = start.getHours() * 60 + start.getMinutes();
+    } else if (isFirstDay) {
+      label = `${formatTimeShort(start)} ▶`;
+      dayType = 'start';
+      sortTime = start.getHours() * 60 + start.getMinutes();
+    } else if (isLastDay) {
+      label = `▶ ${formatTimeShort(end)}`;
+      dayType = 'end';
+      sortTime = 0;
+    } else {
+      label = 'completo';
+      dayType = 'middle';
+      sortTime = 0;
+    }
+
+    occurrences.push({
+      day,
+      label,
+      title: ev.title,
+      event_type: ev.event_type,
+      dayType,
+      sortTime,
+      event: ev, // Referencia al evento completo para manejar clicks
+    });
+
+    // Avanzar al siguiente día
+    current.setDate(current.getDate() + 1);
+  }
+
+  return occurrences;
+}
 
 /**
  * EventsContent - Contenido principal del módulo de eventos.
@@ -82,6 +229,14 @@ const EventsContent = ({ churchId, churchName, backButton }) => {
   const [salesCalendarYear, setSalesCalendarYear] = useState(new Date().getFullYear());
   const [downloadingSalesPdf, setDownloadingSalesPdf] = useState(false);
 
+  // === Estado de la vista de calendario/lista ===
+  // viewMode: 'calendar' (grilla desktop), 'list' (lista móvil), 'table' (tabla paginada original)
+  const [viewMode, setViewMode] = useState(isMobile ? 'list' : 'calendar');
+  const [calViewYear, setCalViewYear] = useState(new Date().getFullYear());
+  const [calViewMonth, setCalViewMonth] = useState(new Date().getMonth() + 1);
+  const [calendarEvents, setCalendarEvents] = useState([]);
+  const [loadingCalendar, setLoadingCalendar] = useState(false);
+
   // ===== CARGA DE EVENTOS =====
   const loadEvents = useCallback(async (page = 0) => {
     setLoading(true);
@@ -100,6 +255,65 @@ const EventsContent = ({ churchId, churchName, backButton }) => {
   }, [churchId]);
 
   useEffect(() => { loadEvents(); }, [loadEvents]);
+
+  // ===== CARGA DE EVENTOS PARA CALENDARIO/LISTA =====
+
+  /**
+   * Carga todos los eventos del mes seleccionado para las vistas de calendario y lista.
+   * Usa un buffer de 31 días antes del inicio del mes para capturar eventos multi-día
+   * que empezaron en el mes anterior pero se extienden al mes actual.
+   * No usa paginación (limit: 500) porque necesitamos todos los eventos del mes.
+   */
+  const loadCalendarEvents = useCallback(async () => {
+    setLoadingCalendar(true);
+    try {
+      // Buffer de 31 días para capturar eventos multi-día del mes anterior
+      const monthStart = new Date(calViewYear, calViewMonth - 1, 1);
+      const bufferStart = new Date(monthStart);
+      bufferStart.setDate(bufferStart.getDate() - 31);
+      const monthEnd = new Date(calViewYear, calViewMonth, 0, 23, 59, 59);
+
+      const params = {
+        start_date: bufferStart.toISOString(),
+        end_date: monthEnd.toISOString(),
+        limit: 500,
+        page: 1,
+      };
+      if (churchId) params.church_id = churchId;
+
+      const { data } = await api.get('/events', { params });
+      setCalendarEvents(data.events || []);
+    } catch (error) {
+      toast.error('Error al cargar eventos del calendario');
+    } finally {
+      setLoadingCalendar(false);
+    }
+  }, [calViewYear, calViewMonth, churchId]);
+
+  /** Cargar eventos del calendario cuando cambia el mes/año o el modo de vista */
+  useEffect(() => {
+    if (viewMode === 'calendar' || viewMode === 'list') {
+      loadCalendarEvents();
+    }
+  }, [viewMode, loadCalendarEvents]);
+
+  // ===== NAVEGACIÓN DE MESES =====
+
+  /** Avanza o retrocede un mes en la vista de calendario/lista */
+  const navigateMonth = (delta) => {
+    let newMonth = calViewMonth + delta;
+    let newYear = calViewYear;
+    if (newMonth < 1) { newMonth = 12; newYear--; }
+    if (newMonth > 12) { newMonth = 1; newYear++; }
+    setCalViewMonth(newMonth);
+    setCalViewYear(newYear);
+  };
+
+  /** Vuelve al mes actual */
+  const goToToday = () => {
+    setCalViewMonth(new Date().getMonth() + 1);
+    setCalViewYear(new Date().getFullYear());
+  };
 
   /**
    * Carga la lista de miembros para los selectores de roles de culto.
@@ -135,6 +349,8 @@ const EventsContent = ({ churchId, churchName, backButton }) => {
       }
       setShowModal(false);
       loadEvents(pagination.page);
+      // Recargar calendario/lista si están activos
+      if (viewMode !== 'table') loadCalendarEvents();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Error al guardar');
     }
@@ -174,6 +390,8 @@ const EventsContent = ({ churchId, churchName, backButton }) => {
       await api.delete(`/events/${id}`);
       toast.success('Evento eliminado');
       loadEvents(pagination.page);
+      // Recargar calendario/lista si están activos
+      if (viewMode !== 'table') loadCalendarEvents();
     } catch (error) {
       toast.error('Error al eliminar');
     }
@@ -297,6 +515,8 @@ const EventsContent = ({ churchId, churchName, backButton }) => {
       toast.success(`Asistencia guardada: ${data.attendees_count} asistentes, ${data.faith_decisions} decisiones de fe`);
       setShowAttendeesModal(false);
       loadEvents(pagination.page); // Recargar para ver contadores actualizados
+      // Recargar calendario/lista si están activos
+      if (viewMode !== 'table') loadCalendarEvents();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Error al guardar asistencia');
     } finally {
@@ -403,22 +623,40 @@ const EventsContent = ({ churchId, churchName, backButton }) => {
       {/* Botón volver (solo SuperAdmin con iglesia seleccionada) */}
       {backButton}
 
-      {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1 }}>
+      {/* Header con título, toggle de vistas y acciones */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h5" fontWeight={700}>
           Eventos{churchName ? ` — ${churchName}` : ''}
         </Typography>
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+          {/* Toggle de vista: Calendario (solo desktop) | Lista | Tabla */}
+          <ToggleButtonGroup
+            value={viewMode}
+            exclusive
+            onChange={(_, newMode) => { if (newMode) setViewMode(newMode); }}
+            size="small"
+          >
+            {/* Calendario solo visible en pantallas sm+ (no en móvil) */}
+            <ToggleButton value="calendar" sx={{ display: { xs: 'none', sm: 'flex' } }}>
+              <Tooltip title="Calendario"><CalendarIcon fontSize="small" /></Tooltip>
+            </ToggleButton>
+            <ToggleButton value="list">
+              <Tooltip title="Lista"><ViewListIcon fontSize="small" /></Tooltip>
+            </ToggleButton>
+            <ToggleButton value="table">
+              <Tooltip title="Tabla"><TableIcon fontSize="small" /></Tooltip>
+            </ToggleButton>
+          </ToggleButtonGroup>
           {/* Botón Calendario PDF mensual */}
           <Button variant="outlined" startIcon={<CalendarIcon />}
             onClick={() => setShowCalendarModal(true)}
-            color="secondary">
+            color="secondary" size="small">
             Calendario PDF
           </Button>
           {/* Botón Calendario de Ventas PDF (muestra todos los meses con eventos tipo Ventas) */}
           <Button variant="outlined" startIcon={<StorefrontIcon />}
             onClick={() => setShowSalesCalendarModal(true)}
-            color="warning">
+            color="warning" size="small">
             Ventas PDF
           </Button>
           {hasRole('Administrador', 'Secretaría', 'Líder') && (
@@ -427,8 +665,308 @@ const EventsContent = ({ churchId, churchName, backButton }) => {
         </Box>
       </Box>
 
-      {/* Tabla de eventos */}
-      <Paper>
+      {/* ===== VISTA CALENDARIO (Desktop) ===== */}
+      {viewMode === 'calendar' && (() => {
+        // Expandir todos los eventos del mes en ocurrencias por día
+        const eventsByDay = {};
+        calendarEvents.forEach((ev) => {
+          const occurrences = expandEventToDays(ev, calViewYear, calViewMonth);
+          occurrences.forEach((occ) => {
+            if (!eventsByDay[occ.day]) eventsByDay[occ.day] = [];
+            eventsByDay[occ.day].push(occ);
+          });
+        });
+        // Ordenar eventos dentro de cada día por hora de inicio
+        Object.keys(eventsByDay).forEach((day) => {
+          eventsByDay[day].sort((a, b) => a.sortTime - b.sortTime);
+        });
+
+        const weeks = getCalendarGrid(calViewYear, calViewMonth);
+        const today = new Date();
+        const isCurrentMonth = today.getFullYear() === calViewYear && today.getMonth() + 1 === calViewMonth;
+        const todayDay = today.getDate();
+        /** Máximo de eventos visibles por celda antes de mostrar "+N más" */
+        const MAX_VISIBLE_EVENTS = 3;
+
+        return (
+          <Paper sx={{ overflow: 'hidden' }}>
+            {/* Barra de navegación de meses */}
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 2, py: 1.5, bgcolor: '#0D47A1', color: '#fff' }}>
+              <IconButton onClick={() => navigateMonth(-1)} sx={{ color: '#fff' }}>
+                <ChevronLeftIcon />
+              </IconButton>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="h6" fontWeight={700}>
+                  {MONTH_NAMES_FULL[calViewMonth - 1]} {calViewYear}
+                </Typography>
+                <Button size="small" variant="outlined" startIcon={<TodayIcon />}
+                  onClick={goToToday}
+                  sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.5)', ml: 1, textTransform: 'none', '&:hover': { borderColor: '#fff' } }}>
+                  Hoy
+                </Button>
+              </Box>
+              <IconButton onClick={() => navigateMonth(1)} sx={{ color: '#fff' }}>
+                <ChevronRightIcon />
+              </IconButton>
+            </Box>
+
+            {/* Header de días de la semana */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
+              {DAY_NAMES_SHORT.map((dayName, i) => (
+                <Box key={dayName} sx={{
+                  py: 1, textAlign: 'center',
+                  bgcolor: i === 0 ? '#1565C0' : '#1E88E5',
+                  borderRight: i < 6 ? '1px solid rgba(255,255,255,0.2)' : 'none',
+                }}>
+                  <Typography variant="caption" fontWeight={700} color="#fff">{dayName}</Typography>
+                </Box>
+              ))}
+            </Box>
+
+            {/* Grilla del calendario */}
+            {loadingCalendar ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+                <CircularProgress />
+              </Box>
+            ) : (
+              weeks.map((week, weekIdx) => (
+                <Box key={weekIdx} sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
+                  {week.map((day, colIdx) => {
+                    const isWeekend = colIdx === 0 || colIdx === 6;
+                    const isToday = isCurrentMonth && day === todayDay;
+                    const dayEvents = day ? (eventsByDay[day] || []) : [];
+                    const visibleEvents = dayEvents.slice(0, MAX_VISIBLE_EVENTS);
+                    const overflowCount = dayEvents.length - MAX_VISIBLE_EVENTS;
+
+                    return (
+                      <Box key={colIdx} sx={{
+                        minHeight: 110,
+                        borderRight: '1px solid', borderBottom: '1px solid',
+                        borderColor: 'divider',
+                        bgcolor: day === null ? '#F0F0F0' : (isWeekend ? '#F5F8FF' : '#fff'),
+                        p: 0.5,
+                        overflow: 'hidden',
+                      }}>
+                        {day !== null && (
+                          <>
+                            {/* Número del día, resaltado si es hoy */}
+                            <Typography
+                              variant="body2"
+                              fontWeight={700}
+                              sx={{
+                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                width: 26, height: 26, borderRadius: '50%', mb: 0.5,
+                                color: isToday ? '#fff' : (colIdx === 0 ? '#C62828' : 'text.primary'),
+                                bgcolor: isToday ? '#1565C0' : 'transparent',
+                              }}
+                            >
+                              {day}
+                            </Typography>
+
+                            {/* Eventos del día */}
+                            {visibleEvents.map((occ, occIdx) => {
+                              const colors = EVENT_COLORS[occ.event_type] || EVENT_COLORS['Otro'];
+                              return (
+                                <Tooltip key={occIdx} title={`${occ.label} — ${occ.title}`} arrow placement="top">
+                                  <Box
+                                    onClick={() => openEdit(occ.event)}
+                                    sx={{
+                                      display: 'flex', alignItems: 'center', gap: 0.5,
+                                      bgcolor: colors.bg,
+                                      borderLeft: `3px solid ${colors.border}`,
+                                      borderRadius: '3px',
+                                      px: 0.5, py: '2px', mb: '3px',
+                                      cursor: 'pointer',
+                                      overflow: 'hidden',
+                                      '&:hover': { opacity: 0.85, boxShadow: 1 },
+                                    }}
+                                  >
+                                    <Typography noWrap sx={{ fontSize: 11, color: colors.text, fontWeight: 600, lineHeight: 1.3 }}>
+                                      {occ.label}
+                                    </Typography>
+                                    <Typography noWrap sx={{ fontSize: 11, color: colors.text, lineHeight: 1.3, flex: 1 }}>
+                                      {occ.title}
+                                    </Typography>
+                                  </Box>
+                                </Tooltip>
+                              );
+                            })}
+
+                            {/* Indicador de más eventos si excede el máximo visible */}
+                            {overflowCount > 0 && (
+                              <Typography variant="caption" color="primary" sx={{ cursor: 'pointer', fontWeight: 600, fontSize: 11, pl: 0.5 }}>
+                                +{overflowCount} más
+                              </Typography>
+                            )}
+                          </>
+                        )}
+                      </Box>
+                    );
+                  })}
+                </Box>
+              ))
+            )}
+
+            {/* Leyenda de colores por tipo de evento */}
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, px: 2, py: 1.5, borderTop: '1px solid', borderColor: 'divider', bgcolor: '#FAFAFA' }}>
+              {Object.entries(EVENT_COLORS).map(([type, colors]) => (
+                <Box key={type} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Box sx={{ width: 10, height: 10, borderRadius: '2px', bgcolor: colors.border }} />
+                  <Typography variant="caption" color="text.secondary">{type}</Typography>
+                </Box>
+              ))}
+            </Box>
+          </Paper>
+        );
+      })()}
+
+      {/* ===== VISTA LISTA (Móvil / opción en desktop) ===== */}
+      {viewMode === 'list' && (() => {
+        // Filtrar eventos que realmente pertenecen al mes seleccionado
+        // y ordenar por fecha de inicio ascendente
+        const monthEvents = calendarEvents
+          .filter((ev) => {
+            const start = new Date(ev.start_date);
+            const end = ev.end_date ? new Date(ev.end_date) : start;
+            const monthStart = new Date(calViewYear, calViewMonth - 1, 1);
+            const monthEnd = new Date(calViewYear, calViewMonth, 0, 23, 59, 59);
+            // El evento se solapa con el mes si: inicio <= finMes AND fin >= inicioMes
+            return start <= monthEnd && end >= monthStart;
+          })
+          .sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
+
+        // Agrupar eventos por fecha (día) para mostrar headers de fecha
+        const groupedByDate = {};
+        monthEvents.forEach((ev) => {
+          const dateKey = new Date(ev.start_date).toLocaleDateString('es-ES', {
+            weekday: 'long', day: 'numeric', month: 'long',
+          });
+          if (!groupedByDate[dateKey]) groupedByDate[dateKey] = [];
+          groupedByDate[dateKey].push(ev);
+        });
+
+        return (
+          <Box>
+            {/* Barra de navegación de meses (compacta para móvil) */}
+            <Paper sx={{ mb: 2, overflow: 'hidden' }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 1.5, py: 1, bgcolor: '#0D47A1', color: '#fff' }}>
+                <IconButton onClick={() => navigateMonth(-1)} sx={{ color: '#fff' }} size="small">
+                  <ChevronLeftIcon />
+                </IconButton>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Typography variant="subtitle1" fontWeight={700}>
+                    {MONTH_NAMES_FULL[calViewMonth - 1]} {calViewYear}
+                  </Typography>
+                  <IconButton onClick={goToToday} sx={{ color: '#fff' }} size="small" title="Ir a hoy">
+                    <TodayIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+                <IconButton onClick={() => navigateMonth(1)} sx={{ color: '#fff' }} size="small">
+                  <ChevronRightIcon />
+                </IconButton>
+              </Box>
+            </Paper>
+
+            {/* Contenido de la lista */}
+            {loadingCalendar ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress />
+              </Box>
+            ) : monthEvents.length === 0 ? (
+              <Alert severity="info">
+                No hay eventos en {MONTH_NAMES_FULL[calViewMonth - 1]} {calViewYear}
+              </Alert>
+            ) : (
+              Object.entries(groupedByDate).map(([dateLabel, dateEvents]) => (
+                <Box key={dateLabel} sx={{ mb: 2 }}>
+                  {/* Header de fecha (ej: "domingo 5 de marzo") */}
+                  <Typography variant="subtitle2" color="text.secondary" fontWeight={700}
+                    sx={{ textTransform: 'capitalize', mb: 1, px: 0.5 }}>
+                    {dateLabel}
+                  </Typography>
+
+                  {/* Eventos de ese día */}
+                  {dateEvents.map((ev) => {
+                    const colors = EVENT_COLORS[ev.event_type] || EVENT_COLORS['Otro'];
+                    return (
+                      <Paper key={ev.id} sx={{
+                        mb: 1, p: 1.5,
+                        borderLeft: `4px solid ${colors.border}`,
+                        cursor: 'pointer',
+                        '&:hover': { boxShadow: 2 },
+                      }}
+                        onClick={() => openEdit(ev)}
+                      >
+                        {/* Título y tipo */}
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Typography fontWeight={600} fontSize={14} noWrap>{ev.title}</Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {formatTimeShort(ev.start_date)}
+                              {ev.end_date ? ` - ${formatTimeShort(ev.end_date)}` : ''}
+                              {ev.location ? ` • ${ev.location}` : ''}
+                            </Typography>
+                          </Box>
+                          <Chip label={ev.event_type} size="small" variant="outlined"
+                            sx={{ bgcolor: colors.bg, color: colors.text, borderColor: colors.border, fontSize: 11 }} />
+                        </Box>
+
+                        {/* Roles de culto si aplica */}
+                        {ev.event_type === 'Culto' && (ev.preacher || ev.worship_leader || ev.singer) && (
+                          <Box sx={{ mt: 0.5, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                            {ev.preacher && (
+                              <Chip label={`P: ${ev.preacher.first_name}`} size="small" variant="outlined" color="primary" sx={{ fontSize: 10, height: 20 }} />
+                            )}
+                            {ev.worship_leader && (
+                              <Chip label={`D: ${ev.worship_leader.first_name}`} size="small" variant="outlined" color="secondary" sx={{ fontSize: 10, height: 20 }} />
+                            )}
+                            {ev.singer && (
+                              <Chip label={`C: ${ev.singer.first_name}`} size="small" variant="outlined" color="success" sx={{ fontSize: 10, height: 20 }} />
+                            )}
+                          </Box>
+                        )}
+
+                        {/* Contadores y acciones */}
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+                          <Box sx={{ display: 'flex', gap: 0.5 }}>
+                            <Chip icon={<PeopleIcon />} label={ev.attendees_count} size="small" color="primary" variant="outlined" sx={{ fontSize: 11 }} />
+                            {ev.faith_decisions > 0 && (
+                              <Chip icon={<FavoriteIcon />} label={ev.faith_decisions} size="small" color="error" variant="filled" sx={{ fontSize: 11 }} />
+                            )}
+                          </Box>
+                          {/* Acciones rápidas */}
+                          <Box sx={{ display: 'flex', gap: 0 }}
+                            onClick={(e) => e.stopPropagation()} /* Evitar que el click en acciones abra editar */
+                          >
+                            {hasRole('Administrador', 'Secretaría', 'Líder') && (
+                              <>
+                                <IconButton size="small" onClick={() => openAttendees(ev)} color="success" title="Asistentes">
+                                  <PeopleIcon fontSize="small" />
+                                </IconButton>
+                                <IconButton size="small" onClick={() => openEdit(ev)} color="primary" title="Editar">
+                                  <EditIcon fontSize="small" />
+                                </IconButton>
+                              </>
+                            )}
+                            {hasRole('Administrador') && (
+                              <IconButton size="small" onClick={() => handleDelete(ev.id)} color="error" title="Eliminar">
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            )}
+                          </Box>
+                        </Box>
+                      </Paper>
+                    );
+                  })}
+                </Box>
+              ))
+            )}
+          </Box>
+        );
+      })()}
+
+      {/* ===== VISTA TABLA (original, paginada) ===== */}
+      {viewMode === 'table' && <Paper>
         <TableContainer>
           <Table size="small">
             <TableHead>
@@ -512,7 +1050,7 @@ const EventsContent = ({ churchId, churchName, backButton }) => {
         <TablePagination component="div" count={pagination.total} page={pagination.page}
           onPageChange={(_, p) => loadEvents(p)} rowsPerPage={15} rowsPerPageOptions={[15]}
           labelDisplayedRows={({ from, to, count }) => `${from}-${to} de ${count}`} />
-      </Paper>
+      </Paper>}
 
       {/* ===== DIALOG CREAR/EDITAR EVENTO ===== */}
       <Dialog open={showModal} onClose={() => setShowModal(false)} maxWidth="sm" fullWidth

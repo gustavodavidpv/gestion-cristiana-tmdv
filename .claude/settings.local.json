@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx -y eslint --no-eslintrc --parser-options=ecmaVersion:2020,sourceType:module,ecmaFeatures:{jsx:true} --rule '{}' src/pages/Events.js)",
+      "Bash(node -e \":*)"
+    ]
+  }
+}
