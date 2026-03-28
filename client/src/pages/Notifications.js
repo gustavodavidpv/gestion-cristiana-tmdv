@@ -19,7 +19,7 @@ import {
   Alert, Chip, Divider, Card, CardContent, CardActions,
   FormControl, InputLabel, Select, MenuItem, Switch,
   FormControlLabel, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, IconButton, Tooltip,
+  TableHead, TableRow, IconButton, Tooltip, useMediaQuery, useTheme,
 } from '@mui/material';
 import {
   WhatsApp as WhatsAppIcon,
@@ -44,6 +44,9 @@ const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => {
 });
 
 const Notifications = () => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
   // Estado de configuración WhatsApp
   const [status, setStatus] = useState(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
@@ -351,7 +354,53 @@ const Notifications = () => {
               <Alert severity="info">
                 No hay cultos con roles asignados en los próximos 7 días. Asigne roles (P, D, C) al crear o editar eventos tipo Culto.
               </Alert>
+            ) : isMobile ? (
+              /* Vista móvil: cards por culto */
+              <Box sx={{ maxHeight: 420, overflow: 'auto' }}>
+                {upcomingCultos.map((culto) => {
+                  const state = sendingState[culto.id];
+                  return (
+                    <Paper key={culto.id} variant="outlined" sx={{ p: 1.5, mb: 1.5, borderLeft: '4px solid #25D366' }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <Box>
+                          <Typography variant="body2" fontWeight={600} fontSize={13}>{culto.title}</Typography>
+                          <Typography variant="caption" color="text.secondary">{formatDate(culto.start_date)}</Typography>
+                        </Box>
+                        <Box>
+                          {state === 'sending' ? (
+                            <CircularProgress size={22} />
+                          ) : state === 'sent' ? (
+                            <CheckIcon color="success" fontSize="small" />
+                          ) : state === 'error' ? (
+                            <IconButton size="small" color="error" onClick={() => handleSendForEvent(culto.id)}><ErrorIcon fontSize="small" /></IconButton>
+                          ) : (
+                            <IconButton size="small" color="success" onClick={() => handleSendForEvent(culto.id)} disabled={!status?.whatsapp_configured}>
+                              <SendIcon fontSize="small" />
+                            </IconButton>
+                          )}
+                        </Box>
+                      </Box>
+                      <Divider sx={{ my: 1 }} />
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Typography variant="caption" fontWeight={600} sx={{ minWidth: 20 }}>P:</Typography>
+                          {memberLabel(culto.preacher)}
+                        </Box>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Typography variant="caption" fontWeight={600} sx={{ minWidth: 20 }}>D:</Typography>
+                          {memberLabel(culto.worship_leader)}
+                        </Box>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Typography variant="caption" fontWeight={600} sx={{ minWidth: 20 }}>C:</Typography>
+                          {memberLabel(culto.singer)}
+                        </Box>
+                      </Box>
+                    </Paper>
+                  );
+                })}
+              </Box>
             ) : (
+              /* Vista desktop: tabla */
               <TableContainer sx={{ maxHeight: 420, overflow: 'auto' }}>
                 <Table size="small" stickyHeader>
                   <TableHead>

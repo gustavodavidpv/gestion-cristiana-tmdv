@@ -22,7 +22,7 @@ import {
   Box, Paper, Typography, Button, TextField, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, IconButton, Dialog, DialogTitle,
   DialogContent, DialogActions, Grid, CircularProgress, Avatar, Chip,
-  Card, CardContent, Divider, Alert,
+  Card, CardContent, Divider, Alert, useMediaQuery, useTheme,
 } from '@mui/material';
 import {
   Edit as EditIcon, Delete as DeleteIcon, CloudUpload as UploadIcon,
@@ -42,6 +42,8 @@ const getFileUrl = (path) => {
 
 const Branding = () => {
   const { user, isSuperAdmin } = useAuth();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [churches, setChurches] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -190,7 +192,43 @@ const Branding = () => {
         {isSuperAdmin() && ' Como SuperAdmin, puede editar el branding de cualquier iglesia.'}
       </Alert>
 
-      {/* Tabla de iglesias */}
+      {/* Vista móvil: cards de branding */}
+      {isMobile ? (
+        <Box>
+          {loading ? (
+            <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress /></Box>
+          ) : churches.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>No hay iglesias registradas</Typography>
+          ) : churches.map((ch) => (
+            <Paper key={ch.id} sx={{ p: 2, mb: 1.5, borderLeft: '4px solid #6A1B9A' }}>
+              <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
+                {ch.login_logo_url ? (
+                  <Avatar src={getFileUrl(ch.login_logo_url)} variant="rounded" sx={{ width: 48, height: 48 }}><ChurchIcon /></Avatar>
+                ) : (
+                  <Avatar variant="rounded" sx={{ width: 48, height: 48, bgcolor: 'grey.200' }}><ImageIcon color="disabled" /></Avatar>
+                )}
+                <Box sx={{ flex: 1 }}>
+                  <Typography fontWeight={600} fontSize={14}>{ch.name}</Typography>
+                  {ch.login_title ? (
+                    <Chip label={ch.login_title} size="small" variant="outlined" sx={{ mt: 0.5 }} />
+                  ) : (
+                    <Typography variant="caption" color="text.secondary">Usa nombre de iglesia</Typography>
+                  )}
+                </Box>
+              </Box>
+              <Box sx={{ display: 'flex', gap: 0.5, mt: 1.5, justifyContent: 'flex-end' }}>
+                <IconButton size="small" onClick={() => openPreview(ch)} color="info"><PreviewIcon fontSize="small" /></IconButton>
+                <IconButton size="small" onClick={() => openEditTitle(ch)} color="primary"><EditIcon fontSize="small" /></IconButton>
+                <IconButton size="small" onClick={() => openUploadLogo(ch)} color="success"><UploadIcon fontSize="small" /></IconButton>
+                {ch.login_logo_url && (
+                  <IconButton size="small" onClick={() => handleDeleteLogo(ch)} color="error"><DeleteIcon fontSize="small" /></IconButton>
+                )}
+              </Box>
+            </Paper>
+          ))}
+        </Box>
+      ) : (
+      /* Vista desktop: tabla de iglesias */
       <Paper>
         <TableContainer>
           <Table size="small">
@@ -198,7 +236,7 @@ const Branding = () => {
               <TableRow>
                 <TableCell>Logo</TableCell>
                 <TableCell>Iglesia</TableCell>
-                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Título Login</TableCell>
+                <TableCell>Título Login</TableCell>
                 <TableCell align="right">Acciones</TableCell>
               </TableRow>
             </TableHead>
@@ -213,52 +251,27 @@ const Branding = () => {
                 </TableRow>
               ) : churches.map((ch) => (
                 <TableRow key={ch.id} hover>
-                  {/* Logo thumbnail */}
                   <TableCell sx={{ width: 60 }}>
                     {ch.login_logo_url ? (
-                      <Avatar
-                        src={getFileUrl(ch.login_logo_url)}
-                        variant="rounded"
-                        sx={{ width: 48, height: 48 }}
-                      >
-                        <ChurchIcon />
-                      </Avatar>
+                      <Avatar src={getFileUrl(ch.login_logo_url)} variant="rounded" sx={{ width: 48, height: 48 }}><ChurchIcon /></Avatar>
                     ) : (
-                      <Avatar variant="rounded" sx={{ width: 48, height: 48, bgcolor: 'grey.200' }}>
-                        <ImageIcon color="disabled" />
-                      </Avatar>
+                      <Avatar variant="rounded" sx={{ width: 48, height: 48, bgcolor: 'grey.200' }}><ImageIcon color="disabled" /></Avatar>
                     )}
                   </TableCell>
-
-                  {/* Nombre de la iglesia */}
+                  <TableCell><Typography fontWeight={600} fontSize={14}>{ch.name}</Typography></TableCell>
                   <TableCell>
-                    <Typography fontWeight={600} fontSize={14}>{ch.name}</Typography>
-                  </TableCell>
-
-                  {/* Título personalizado */}
-                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
                     {ch.login_title ? (
                       <Chip label={ch.login_title} size="small" variant="outlined" />
                     ) : (
                       <Typography variant="caption" color="text.secondary">Usa nombre de iglesia</Typography>
                     )}
                   </TableCell>
-
-                  {/* Acciones */}
                   <TableCell align="right">
-                    <IconButton size="small" onClick={() => openPreview(ch)} color="info" title="Preview">
-                      <PreviewIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton size="small" onClick={() => openEditTitle(ch)} color="primary" title="Editar título">
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton size="small" onClick={() => openUploadLogo(ch)} color="success" title="Subir logo">
-                      <UploadIcon fontSize="small" />
-                    </IconButton>
+                    <IconButton size="small" onClick={() => openPreview(ch)} color="info" title="Preview"><PreviewIcon fontSize="small" /></IconButton>
+                    <IconButton size="small" onClick={() => openEditTitle(ch)} color="primary" title="Editar título"><EditIcon fontSize="small" /></IconButton>
+                    <IconButton size="small" onClick={() => openUploadLogo(ch)} color="success" title="Subir logo"><UploadIcon fontSize="small" /></IconButton>
                     {ch.login_logo_url && (
-                      <IconButton size="small" onClick={() => handleDeleteLogo(ch)} color="error" title="Eliminar logo">
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
+                      <IconButton size="small" onClick={() => handleDeleteLogo(ch)} color="error" title="Eliminar logo"><DeleteIcon fontSize="small" /></IconButton>
                     )}
                   </TableCell>
                 </TableRow>
@@ -267,9 +280,10 @@ const Branding = () => {
           </Table>
         </TableContainer>
       </Paper>
+      )}
 
       {/* ===== DIALOG: EDITAR TÍTULO ===== */}
-      <Dialog open={showModal} onClose={() => setShowModal(false)} maxWidth="sm" fullWidth>
+      <Dialog open={showModal} onClose={() => setShowModal(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Editar Título de Login</DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -295,7 +309,7 @@ const Branding = () => {
       </Dialog>
 
       {/* ===== DIALOG: SUBIR LOGO ===== */}
-      <Dialog open={showUploadModal} onClose={() => setShowUploadModal(false)} maxWidth="sm" fullWidth>
+      <Dialog open={showUploadModal} onClose={() => setShowUploadModal(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Subir Logo — {uploadChurch?.name}</DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -349,7 +363,7 @@ const Branding = () => {
       </Dialog>
 
       {/* ===== DIALOG: PREVIEW DE LOGIN ===== */}
-      <Dialog open={showPreview} onClose={() => setShowPreview(false)} maxWidth="xs" fullWidth>
+      <Dialog open={showPreview} onClose={() => setShowPreview(false)} maxWidth="xs" fullWidth fullScreen={isMobile}>
         <DialogTitle>Preview de Login</DialogTitle>
         <DialogContent>
           {previewData && (

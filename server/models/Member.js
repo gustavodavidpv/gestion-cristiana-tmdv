@@ -42,13 +42,14 @@ const Member = sequelize.define('Member', {
     defaultValue: false,
   },
   /**
-   * birth_date - Fecha de nacimiento del miembro (OPCIONAL)
-   * Se usa para calcular la edad automáticamente si no se indica 'age'.
+   * birth_date - Cumpleaños del miembro (OPCIONAL), solo mes y día.
+   * Formato: "MM-DD" (ej: "03-15" = 15 de marzo).
+   * No se almacena el año porque solo interesa la fecha de cumpleaños.
    */
   birth_date: {
-    type: DataTypes.DATEONLY,
+    type: DataTypes.STRING(5),
     allowNull: true,
-    comment: 'Fecha de nacimiento del miembro',
+    comment: 'Mes y día de nacimiento del miembro (formato MM-DD)',
   },
   member_type: {
     type: DataTypes.STRING(30),

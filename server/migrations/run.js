@@ -189,6 +189,21 @@ const runMigrations = async () => {
       console.warn('   ⚠️  churches branding columns:', e.message);
     }
 
+    // --- 4c-bis. Columna churches.initials ---
+    // Iniciales de la iglesia para mostrar en sidebar/branding (ej: "TMDV")
+    try {
+      const [iniCol] = await sequelize.query(`
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = 'churches' AND column_name = 'initials'
+      `);
+      if (iniCol.length === 0) {
+        await sequelize.query(`ALTER TABLE churches ADD COLUMN initials VARCHAR(10)`);
+        console.log('   ✅ Columna churches.initials agregada.');
+      }
+    } catch (e) {
+      console.warn('   ⚠️  churches.initials:', e.message);
+    }
+
     // --- 4d. Columna members.birth_date ---
     try {
       const [bdCol] = await sequelize.query(`
@@ -196,11 +211,36 @@ const runMigrations = async () => {
         WHERE table_name = 'members' AND column_name = 'birth_date'
       `);
       if (bdCol.length === 0) {
-        await sequelize.query(`ALTER TABLE members ADD COLUMN birth_date DATE`);
-        console.log('   ✅ Columna members.birth_date agregada.');
+        // Si no existe, crear directamente como VARCHAR(5) para formato MM-DD
+        await sequelize.query(`ALTER TABLE members ADD COLUMN birth_date VARCHAR(5)`);
+        console.log('   ✅ Columna members.birth_date agregada (VARCHAR MM-DD).');
       }
     } catch (e) {
       console.warn('   ⚠️  members.birth_date:', e.message);
+    }
+
+    // --- 4d-bis. Migrar members.birth_date de DATE a VARCHAR(5) con formato MM-DD ---
+    // Si birth_date es tipo 'date', extraer solo mes y día y convertir a VARCHAR(5)
+    try {
+      const [colType] = await sequelize.query(`
+        SELECT data_type FROM information_schema.columns
+        WHERE table_name = 'members' AND column_name = 'birth_date'
+      `);
+      if (colType.length > 0 && colType[0].data_type === 'date') {
+        // Crear columna temporal para almacenar MM-DD
+        await sequelize.query(`ALTER TABLE members ADD COLUMN birth_date_new VARCHAR(5)`);
+        // Copiar datos existentes extrayendo MM-DD con TO_CHAR
+        await sequelize.query(`
+          UPDATE members SET birth_date_new = TO_CHAR(birth_date, 'MM-DD')
+          WHERE birth_date IS NOT NULL
+        `);
+        // Eliminar columna vieja y renombrar nueva
+        await sequelize.query(`ALTER TABLE members DROP COLUMN birth_date`);
+        await sequelize.query(`ALTER TABLE members RENAME COLUMN birth_date_new TO birth_date`);
+        console.log('   ✅ Columna members.birth_date migrada de DATE a VARCHAR(5) MM-DD.');
+      }
+    } catch (e) {
+      console.warn('   ⚠️  members.birth_date migration:', e.message);
     }
 
     // --- 4e. Columna members.church_role ---
@@ -329,6 +369,41 @@ const runMigrations = async () => {
       } catch (e) {
         console.warn(`   ⚠️  churches.${col}:`, e.message);
       }
+    }
+
+    // --- 4k. Tabla member_positions (junction table para M:N cargos por miembro) ---
+    // Permite que un miembro tenga múltiples cargos ministeriales simultáneamente.
+    // Migra datos existentes de members.position_id a la junction table.
+    try {
+      const [mpTable] = await sequelize.query(
+        `SELECT table_name FROM information_schema.tables
+         WHERE table_schema = 'public' AND table_name = 'member_positions'`
+      );
+      if (mpTable.length === 0) {
+        await sequelize.query(`
+          CREATE TABLE member_positions (
+            id SERIAL PRIMARY KEY,
+            member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+            position_id INTEGER NOT NULL REFERENCES ministerial_positions(id) ON DELETE CASCADE,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            UNIQUE(member_id, position_id)
+          )
+        `);
+        console.log('   ✅ Tabla member_positions creada.');
+
+        // Migrar datos existentes: copiar relaciones 1:N de members.position_id
+        const [migrated] = await sequelize.query(`
+          INSERT INTO member_positions (member_id, position_id, created_at, updated_at)
+          SELECT id, position_id, NOW(), NOW()
+          FROM members
+          WHERE position_id IS NOT NULL
+          ON CONFLICT DO NOTHING
+        `);
+        console.log('   ✅ Datos de position_id migrados a member_positions.');
+      }
+    } catch (e) {
+      console.warn('   ⚠️  member_positions:', e.message);
     }
 
     // =========================================================

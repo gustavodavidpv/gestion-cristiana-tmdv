@@ -34,7 +34,7 @@ import {
   CircularProgress, List, ListItem, ListItemText, IconButton,
   Alert, Dialog, DialogTitle, DialogContent, DialogActions,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Chip,
+  Chip, useMediaQuery, useTheme,
 } from '@mui/material';
 import {
   Save as SaveIcon, Add as AddIcon, Delete as DeleteIcon,
@@ -45,6 +45,8 @@ import {
 
 const Churches = () => {
   const { user, hasRole, isSuperAdmin } = useAuth();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   // ===== ESTADO COMPARTIDO =====
   const [loading, setLoading] = useState(true);
@@ -54,7 +56,7 @@ const Churches = () => {
   const [showChurchModal, setShowChurchModal] = useState(false);
   const [editingChurch, setEditingChurch] = useState(null);
   const [churchForm, setChurchForm] = useState({
-    name: '', address: '', phone: '', responsible: '',
+    name: '', address: '', phone: '', responsible: '', initials: '',
   });
 
   // ===== ESTADO PARA VISTA DETALLADA (configuración de una iglesia) =====
@@ -145,6 +147,7 @@ const Churches = () => {
       address: church.address || '',
       phone: church.phone || '',
       responsible: church.responsible || '',
+      initials: church.initials || '',
     });
     setShowChurchModal(true);
   };
@@ -339,7 +342,33 @@ const Churches = () => {
           </Button>
         </Box>
 
-        {/* Tabla de iglesias */}
+        {/* Mobile cards view */}
+        {isMobile && (
+          churches.length === 0 ? (
+            <Paper sx={{ p: 3, textAlign: 'center' }}>
+              <Typography color="text.secondary">No hay iglesias registradas</Typography>
+            </Paper>
+          ) : churches.map((c) => (
+            <Paper key={c.id} sx={{ p: 2, mb: 1.5, borderLeft: '4px solid #1565C0' }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <Box>
+                  <Typography fontWeight={600}>{c.name}</Typography>
+                  {c.responsible && <Typography variant="caption" color="text.secondary">{c.responsible}</Typography>}
+                  {c.phone && <Typography variant="caption" display="block" color="text.secondary">{c.phone}</Typography>}
+                </Box>
+                <Chip label={c.membership_count || 0} size="small" color="primary" variant="outlined" />
+              </Box>
+              <Box sx={{ display: 'flex', gap: 0.5, mt: 1, justifyContent: 'flex-end' }}>
+                <IconButton size="small" onClick={() => openChurchConfig(c)} color="info"><SettingsIcon fontSize="small" /></IconButton>
+                <IconButton size="small" onClick={() => openEditChurch(c)} color="primary"><EditIcon fontSize="small" /></IconButton>
+                <IconButton size="small" onClick={() => deleteChurch(c.id)} color="error"><DeleteIcon fontSize="small" /></IconButton>
+              </Box>
+            </Paper>
+          ))
+        )}
+
+        {/* Desktop table view */}
+        {!isMobile && (
         <Paper>
           <TableContainer>
             <Table size="small">
@@ -404,9 +433,10 @@ const Churches = () => {
             </Table>
           </TableContainer>
         </Paper>
+        )}
 
         {/* ===== DIALOG: CREAR/EDITAR IGLESIA ===== */}
-        <Dialog open={showChurchModal} onClose={() => setShowChurchModal(false)} maxWidth="sm" fullWidth>
+        <Dialog open={showChurchModal} onClose={() => setShowChurchModal(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
           <DialogTitle>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <ChurchIcon color="primary" />
@@ -433,10 +463,19 @@ const Churches = () => {
                   onChange={(e) => setChurchForm({ ...churchForm, address: e.target.value })}
                 />
               </Grid>
-              <Grid item xs={12}>
+              <Grid item xs={12} sm={6}>
                 <TextField fullWidth size="small" label="Teléfono"
                   value={churchForm.phone}
                   onChange={(e) => setChurchForm({ ...churchForm, phone: e.target.value })}
+                />
+              </Grid>
+              {/* Iniciales de la iglesia (para sidebar y branding) */}
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth size="small" label="Iniciales (sidebar)"
+                  value={churchForm.initials}
+                  onChange={(e) => setChurchForm({ ...churchForm, initials: e.target.value })}
+                  inputProps={{ maxLength: 10 }}
+                  helperText="Ej: TMDV, ICB (máx. 10 caracteres)"
                 />
               </Grid>
             </Grid>
@@ -489,6 +528,15 @@ const Churches = () => {
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField fullWidth size="small" label="Teléfono" value={form.phone || ''} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+            </Grid>
+            {/* Iniciales editables de la iglesia (se muestran en sidebar y branding) */}
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth size="small" label="Iniciales (sidebar)"
+                value={form.initials || ''}
+                onChange={(e) => setForm({ ...form, initials: e.target.value })}
+                inputProps={{ maxLength: 10 }}
+                helperText="Se muestran en el sidebar. Ej: TMDV, ICB"
+              />
             </Grid>
           </Grid>
         </Paper>
@@ -695,7 +743,7 @@ const Churches = () => {
       </Paper>
 
       {/* ===== DIALOG: MISIÓN (Crear/Editar) ===== */}
-      <Dialog open={missionModal} onClose={() => setMissionModal(false)} maxWidth="xs" fullWidth>
+      <Dialog open={missionModal} onClose={() => setMissionModal(false)} maxWidth="xs" fullWidth fullScreen={isMobile}>
         <DialogTitle>{editingMission ? 'Editar Misión' : 'Nueva Misión'}</DialogTitle>
         <DialogContent dividers>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
@@ -730,7 +778,7 @@ const Churches = () => {
       </Dialog>
 
       {/* ===== DIALOG: CAMPO BLANCO (Crear/Editar) ===== */}
-      <Dialog open={wfModal} onClose={() => setWfModal(false)} maxWidth="xs" fullWidth>
+      <Dialog open={wfModal} onClose={() => setWfModal(false)} maxWidth="xs" fullWidth fullScreen={isMobile}>
         <DialogTitle>{editingWf ? 'Editar Campo Blanco' : 'Nuevo Campo Blanco'}</DialogTitle>
         <DialogContent dividers>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>

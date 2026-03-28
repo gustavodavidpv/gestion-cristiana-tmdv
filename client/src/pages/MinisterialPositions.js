@@ -12,6 +12,7 @@ import {
   Box, Paper, Typography, Button, TextField, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, IconButton, Chip, Dialog, DialogTitle,
   DialogContent, DialogActions, Grid, CircularProgress, Switch, FormControlLabel,
+  useMediaQuery, useTheme,
 } from '@mui/material';
 import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon,
@@ -20,6 +21,8 @@ import {
 
 const MinisterialPositions = () => {
   const { hasRole, isSuperAdmin } = useAuth();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [positions, setPositions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -92,13 +95,48 @@ const MinisterialPositions = () => {
         )}
       </Box>
 
+      {/* Vista móvil: cards */}
+      {isMobile ? (
+        <Box>
+          {loading ? (
+            <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress /></Box>
+          ) : positions.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>No hay cargos registrados</Typography>
+          ) : positions.map((pos) => (
+            <Paper key={pos.id} sx={{ p: 2, mb: 1.5, borderLeft: `4px solid ${pos.is_active ? '#6A1B9A' : '#9e9e9e'}` }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <Box sx={{ flex: 1 }}>
+                  <Typography fontWeight={600} fontSize={14}>{pos.name}</Typography>
+                  {pos.description && (
+                    <Typography variant="caption" color="text.secondary" sx={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                      {pos.description}
+                    </Typography>
+                  )}
+                  {isSuperAdmin() && pos.church?.name && (
+                    <Chip label={pos.church.name} size="small" variant="outlined" sx={{ mt: 0.5 }} />
+                  )}
+                </Box>
+                <Chip label={pos.is_active ? 'Activo' : 'Inactivo'} size="small"
+                  color={pos.is_active ? 'success' : 'default'} variant="outlined" />
+              </Box>
+              <Box sx={{ display: 'flex', gap: 0.5, mt: 1, justifyContent: 'flex-end' }}>
+                <IconButton size="small" onClick={() => openEdit(pos)} color="primary"><EditIcon fontSize="small" /></IconButton>
+                {hasRole('Administrador') && (
+                  <IconButton size="small" onClick={() => handleDelete(pos.id)} color="error"><DeleteIcon fontSize="small" /></IconButton>
+                )}
+              </Box>
+            </Paper>
+          ))}
+        </Box>
+      ) : (
+      /* Vista desktop: tabla */
       <Paper>
         <TableContainer>
           <Table size="small">
             <TableHead>
               <TableRow>
                 <TableCell>Nombre</TableCell>
-                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Descripción</TableCell>
+                <TableCell>Descripción</TableCell>
                 {isSuperAdmin() && <TableCell>Iglesia</TableCell>}
                 <TableCell align="center">Estado</TableCell>
                 <TableCell align="right">Acciones</TableCell>
@@ -114,7 +152,7 @@ const MinisterialPositions = () => {
                   <TableCell>
                     <Typography fontWeight={600} fontSize={14}>{pos.name}</Typography>
                   </TableCell>
-                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' }, maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <TableCell sx={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {pos.description || '-'}
                   </TableCell>
                   {isSuperAdmin() && (
@@ -142,9 +180,10 @@ const MinisterialPositions = () => {
           </Table>
         </TableContainer>
       </Paper>
+      )}
 
       {/* Dialog Crear/Editar */}
-      <Dialog open={showModal} onClose={() => setShowModal(false)} maxWidth="sm" fullWidth>
+      <Dialog open={showModal} onClose={() => setShowModal(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <form onSubmit={handleSubmit}>
           <DialogTitle>{editing ? 'Editar Cargo' : 'Nuevo Cargo Ministerial'}</DialogTitle>
           <DialogContent dividers>

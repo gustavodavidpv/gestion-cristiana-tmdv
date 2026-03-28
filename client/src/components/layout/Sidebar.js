@@ -42,6 +42,20 @@ const menuItems = [
   { path: '/users', icon: <AdminIcon />, label: 'Usuarios', roles: ['Administrador'] },
 ];
 
+/**
+ * Construye la URL completa de un archivo subido al servidor.
+ * Patrón reutilizado de Branding.js para cargar logos de iglesia.
+ * @param {string|null} path - Ruta relativa del archivo (ej: "/uploads/logos/logo-church-1.png")
+ * @returns {string|null} URL completa o null si no hay path
+ */
+const getFileUrl = (path) => {
+  if (!path) return null;
+  const base = process.env.REACT_APP_API_URL
+    ? process.env.REACT_APP_API_URL.replace('/api', '')
+    : '';
+  return `${base}${path}`;
+};
+
 const Sidebar = ({ drawerWidth, mobileOpen, onClose, isMobile }) => {
   const { user, hasRole } = useAuth();
   const location = useLocation();
@@ -53,17 +67,31 @@ const Sidebar = ({ drawerWidth, mobileOpen, onClose, isMobile }) => {
 
   const drawerContent = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* Header */}
+      {/* Header — Logo/nombre/iniciales dinámicos de la iglesia del usuario */}
       <Box sx={{
         p: 3, textAlign: 'center',
         background: 'linear-gradient(180deg, #0D47A1, #1a237e)',
       }}>
-        <Typography variant="h4" sx={{ mb: 0.5 }}>⛪</Typography>
-        <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700 }}>
-          Gestión Cristiana
+        {/* Logo de la iglesia (desde branding) o emoji ⛪ como fallback */}
+        {user?.church?.login_logo_url ? (
+          <Avatar
+            src={getFileUrl(user.church.login_logo_url)}
+            alt={user?.church?.name || 'Iglesia'}
+            sx={{ width: 52, height: 52, mx: 'auto', mb: 0.5, bgcolor: 'rgba(255,255,255,0.15)' }}
+            imgProps={{ onError: (e) => { e.target.style.display = 'none'; } }}
+          >
+            ⛪
+          </Avatar>
+        ) : (
+          <Typography variant="h4" sx={{ mb: 0.5 }}>⛪</Typography>
+        )}
+        {/* Nombre de la iglesia (dinámico) o "Gestión Cristiana" como fallback */}
+        <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700, lineHeight: 1.3 }}>
+          {user?.church?.name || 'Gestión Cristiana'}
         </Typography>
+        {/* Iniciales de la iglesia (editables desde módulo Iglesias) o "TMDV" como fallback */}
         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', letterSpacing: 2 }}>
-          TMDV
+          {user?.church?.initials || 'TMDV'}
         </Typography>
       </Box>
 

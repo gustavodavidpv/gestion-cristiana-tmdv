@@ -12,7 +12,7 @@ import {
   InputLabel, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   IconButton, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
   Grid, CircularProgress, TablePagination, InputAdornment, FormControlLabel,
-  Checkbox, Alert,
+  Checkbox, Alert, useMediaQuery, useTheme,
 } from '@mui/material';
 import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Search as SearchIcon,
@@ -20,6 +20,9 @@ import {
 } from '@mui/icons-material';
 
 const Users = () => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [churches, setChurches] = useState([]);
@@ -168,56 +171,91 @@ const Users = () => {
         </FormControl>
       </Paper>
 
-      {/* Tabla */}
-      <Paper>
-        <TableContainer>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Nombre</TableCell>
-                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Email</TableCell>
-                <TableCell>Rol</TableCell>
-                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Iglesia</TableCell>
-                <TableCell>Estado</TableCell>
-                <TableCell align="right">Acciones</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {loading ? (
-                <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}><CircularProgress /></TableCell></TableRow>
-              ) : users.length === 0 ? (
-                <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}>No se encontraron usuarios</TableCell></TableRow>
-              ) : users.map((u) => (
-                <TableRow key={u.id} hover sx={{ opacity: u.is_active ? 1 : 0.5 }}>
-                  <TableCell><Typography fontWeight={600} fontSize={14}>{u.full_name}</Typography></TableCell>
-                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{u.email}</TableCell>
-                  <TableCell><Chip label={u.role?.name} size="small" color={roleColor(u.role?.name)} /></TableCell>
-                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>{u.church?.name || '-'}</TableCell>
-                  <TableCell>
-                    <Chip label={u.is_active ? 'Activo' : 'Inactivo'} size="small"
-                      color={u.is_active ? 'success' : 'error'} variant="outlined" />
-                  </TableCell>
-                  <TableCell align="right">
-                    <IconButton size="small" onClick={() => openEdit(u)} color="primary" title="Editar"><EditIcon fontSize="small" /></IconButton>
-                    <IconButton size="small" onClick={() => openResetPw(u)} color="warning" title="Reset contraseña"><KeyIcon fontSize="small" /></IconButton>
-                    <IconButton size="small" onClick={() => toggleActive(u)} color={u.is_active ? 'warning' : 'success'}
-                      title={u.is_active ? 'Desactivar' : 'Activar'}>
-                      {u.is_active ? <DisableIcon fontSize="small" /> : <EnableIcon fontSize="small" />}
-                    </IconButton>
-                    <IconButton size="small" onClick={() => handleDelete(u)} color="error" title="Eliminar"><DeleteIcon fontSize="small" /></IconButton>
-                  </TableCell>
+      {/* Tabla / Cards */}
+      {isMobile ? (
+        <Box>
+          {loading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
+          ) : users.length === 0 ? (
+            <Typography align="center" sx={{ py: 4 }} color="text.secondary">No se encontraron usuarios</Typography>
+          ) : users.map((u) => (
+            <Paper key={u.id} sx={{ p: 2, mb: 1.5, borderLeft: '4px solid #1565C0', opacity: u.is_active ? 1 : 0.5 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <Box>
+                  <Typography fontWeight={600} fontSize={14}>{u.full_name}</Typography>
+                  <Typography variant="caption" color="text.secondary">{u.email}</Typography>
+                  {u.church?.name && <Typography variant="caption" display="block" color="text.secondary">{u.church.name}</Typography>}
+                </Box>
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>
+                  <Chip label={u.role?.name} size="small" color={roleColor(u.role?.name)} />
+                  <Chip label={u.is_active ? 'Activo' : 'Inactivo'} size="small" color={u.is_active ? 'success' : 'error'} variant="outlined" />
+                </Box>
+              </Box>
+              <Box sx={{ display: 'flex', gap: 0.5, mt: 1, justifyContent: 'flex-end' }}>
+                <IconButton size="small" onClick={() => openEdit(u)} color="primary"><EditIcon fontSize="small" /></IconButton>
+                <IconButton size="small" onClick={() => openResetPw(u)} color="warning"><KeyIcon fontSize="small" /></IconButton>
+                <IconButton size="small" onClick={() => toggleActive(u)} color={u.is_active ? 'warning' : 'success'}>
+                  {u.is_active ? <DisableIcon fontSize="small" /> : <EnableIcon fontSize="small" />}
+                </IconButton>
+                <IconButton size="small" onClick={() => handleDelete(u)} color="error"><DeleteIcon fontSize="small" /></IconButton>
+              </Box>
+            </Paper>
+          ))}
+          <TablePagination component="div" count={pagination.total} page={pagination.page}
+            onPageChange={(_, p) => loadUsers(p)} rowsPerPage={15} rowsPerPageOptions={[15]}
+            labelDisplayedRows={({ from, to, count }) => `${from}-${to} de ${count}`} />
+        </Box>
+      ) : (
+        <Paper>
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Nombre</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Email</TableCell>
+                  <TableCell>Rol</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Iglesia</TableCell>
+                  <TableCell>Estado</TableCell>
+                  <TableCell align="right">Acciones</TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-        <TablePagination component="div" count={pagination.total} page={pagination.page}
-          onPageChange={(_, p) => loadUsers(p)} rowsPerPage={15} rowsPerPageOptions={[15]}
-          labelDisplayedRows={({ from, to, count }) => `${from}-${to} de ${count}`} />
-      </Paper>
+              </TableHead>
+              <TableBody>
+                {loading ? (
+                  <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}><CircularProgress /></TableCell></TableRow>
+                ) : users.length === 0 ? (
+                  <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}>No se encontraron usuarios</TableCell></TableRow>
+                ) : users.map((u) => (
+                  <TableRow key={u.id} hover sx={{ opacity: u.is_active ? 1 : 0.5 }}>
+                    <TableCell><Typography fontWeight={600} fontSize={14}>{u.full_name}</Typography></TableCell>
+                    <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{u.email}</TableCell>
+                    <TableCell><Chip label={u.role?.name} size="small" color={roleColor(u.role?.name)} /></TableCell>
+                    <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>{u.church?.name || '-'}</TableCell>
+                    <TableCell>
+                      <Chip label={u.is_active ? 'Activo' : 'Inactivo'} size="small"
+                        color={u.is_active ? 'success' : 'error'} variant="outlined" />
+                    </TableCell>
+                    <TableCell align="right">
+                      <IconButton size="small" onClick={() => openEdit(u)} color="primary" title="Editar"><EditIcon fontSize="small" /></IconButton>
+                      <IconButton size="small" onClick={() => openResetPw(u)} color="warning" title="Reset contraseña"><KeyIcon fontSize="small" /></IconButton>
+                      <IconButton size="small" onClick={() => toggleActive(u)} color={u.is_active ? 'warning' : 'success'}
+                        title={u.is_active ? 'Desactivar' : 'Activar'}>
+                        {u.is_active ? <DisableIcon fontSize="small" /> : <EnableIcon fontSize="small" />}
+                      </IconButton>
+                      <IconButton size="small" onClick={() => handleDelete(u)} color="error" title="Eliminar"><DeleteIcon fontSize="small" /></IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <TablePagination component="div" count={pagination.total} page={pagination.page}
+            onPageChange={(_, p) => loadUsers(p)} rowsPerPage={15} rowsPerPageOptions={[15]}
+            labelDisplayedRows={({ from, to, count }) => `${from}-${to} de ${count}`} />
+        </Paper>
+      )}
 
       {/* Dialog CRUD */}
-      <Dialog open={showModal} onClose={() => setShowModal(false)} maxWidth="sm" fullWidth>
+      <Dialog open={showModal} onClose={() => setShowModal(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <form onSubmit={handleSubmit}>
           <DialogTitle>{editing ? 'Editar Usuario' : 'Nuevo Usuario'}</DialogTitle>
           <DialogContent dividers>
@@ -266,7 +304,7 @@ const Users = () => {
       </Dialog>
 
       {/* Dialog Reset Password */}
-      <Dialog open={showResetModal} onClose={() => setShowResetModal(false)} maxWidth="xs" fullWidth>
+      <Dialog open={showResetModal} onClose={() => setShowResetModal(false)} maxWidth="xs" fullWidth fullScreen={isMobile}>
         {resetUser && (
           <form onSubmit={handleResetPw}>
             <DialogTitle>Restablecer Contraseña</DialogTitle>

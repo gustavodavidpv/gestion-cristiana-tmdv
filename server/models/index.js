@@ -13,6 +13,7 @@ const MinuteAttendee = require('./MinuteAttendee');
 const Motion = require('./Motion');
 const MotionVoter = require('./MotionVoter');
 const MinisterialPosition = require('./MinisterialPosition');
+const MemberPosition = require('./MemberPosition');
 const MinuteFile = require('./MinuteFile');
 
 // =============================================
@@ -121,9 +122,33 @@ MotionVoter.belongsTo(Member, { foreignKey: 'member_id', as: 'member' });
 Church.hasMany(MinisterialPosition, { foreignKey: 'church_id', as: 'ministerial_positions' });
 MinisterialPosition.belongsTo(Church, { foreignKey: 'church_id', as: 'church' });
 
-// MinisterialPosition <-> Member (1:N)
+// MinisterialPosition <-> Member (1:N — backward compat, se mantiene para church_role sync)
 MinisterialPosition.hasMany(Member, { foreignKey: 'position_id', as: 'members', constraints: false });
 Member.belongsTo(MinisterialPosition, { foreignKey: 'position_id', as: 'position', constraints: false });
+
+// =============================================
+// CARGOS MINISTERIALES M:N (NUEVO)
+// Un miembro puede tener múltiples cargos simultáneamente.
+// La tabla junction member_positions almacena las relaciones.
+// =============================================
+Member.belongsToMany(MinisterialPosition, {
+  through: MemberPosition,
+  foreignKey: 'member_id',
+  otherKey: 'position_id',
+  as: 'positions',
+});
+MinisterialPosition.belongsToMany(Member, {
+  through: MemberPosition,
+  foreignKey: 'position_id',
+  otherKey: 'member_id',
+  as: 'position_members',
+});
+
+// Asociaciones directas a la junction table para queries con filtros
+MemberPosition.belongsTo(Member, { foreignKey: 'member_id' });
+MemberPosition.belongsTo(MinisterialPosition, { foreignKey: 'position_id' });
+Member.hasMany(MemberPosition, { foreignKey: 'member_id', as: 'member_positions' });
+MinisterialPosition.hasMany(MemberPosition, { foreignKey: 'position_id' });
 
 module.exports = {
   sequelize,
@@ -141,5 +166,6 @@ module.exports = {
   Motion,
   MotionVoter,
   MinisterialPosition,
+  MemberPosition,
   MinuteFile,
 };

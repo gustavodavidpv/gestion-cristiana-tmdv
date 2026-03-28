@@ -35,11 +35,11 @@ const emptyForm = {
   first_name: '', last_name: '', age: '', sex: '', birth_date: '',
   baptized: false, member_type: 'Miembro',
   /**
-   * position_id: FK a ministerial_positions (sistema nuevo, escalable).
-   * Este campo almacena el ID del cargo ministerial seleccionado
-   * que proviene del CRUD de "Cargos Ministeriales".
+   * position_ids: Array de IDs de cargos ministeriales (M:N).
+   * Un miembro puede tener múltiples cargos simultáneamente.
+   * Reemplaza el antiguo position_id (1:N) en el frontend.
    */
-  position_id: '',
+  position_ids: [],
   phone: '', email: '', address: '',
 };
 
@@ -55,7 +55,11 @@ const MembersContent = ({ churchId, churchName, backButton }) => {
   const [pagination, setPagination] = useState({ page: 0, total: 0 });
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('');
-  const [filterPosition, setFilterPosition] = useState('');
+  /**
+   * filterPosition: Array de IDs para filtro multi-select de cargos.
+   * Permite seleccionar varios cargos simultáneamente (F5).
+   */
+  const [filterPosition, setFilterPosition] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -100,8 +104,8 @@ const MembersContent = ({ churchId, churchName, backButton }) => {
       if (churchId) params.church_id = churchId;
       if (search) params.search = search;
       if (filterType) params.member_type = filterType;
-      // Filtrar por position_id (cargo ministerial dinámico)
-      if (filterPosition) params.position_id = filterPosition;
+      // Filtrar por cargos ministeriales (multi-select, comma-separated)
+      if (filterPosition.length > 0) params.position_ids = filterPosition.join(',');
       const { data } = await api.get('/members', { params });
       setMembers(data.members);
       setPagination({ page, total: data.pagination.total });
@@ -118,11 +122,13 @@ const MembersContent = ({ churchId, churchName, backButton }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      // Preparar datos: enviar position_id como número o null
+      // Preparar datos: enviar position_ids[] (M:N) al backend
       const payload = {
         ...form,
-        position_id: form.position_id || null,
+        position_ids: form.position_ids.length > 0 ? form.position_ids : [],
       };
+      // Eliminar position_id legacy del payload (el backend lo maneja desde position_ids)
+      delete payload.position_id;
       // SuperAdmin: enviar church_id explícitamente al crear
       if (churchId && !editing) {
         payload.church_id = churchId;
@@ -149,10 +155,13 @@ const MembersContent = ({ churchId, churchName, backButton }) => {
       sex: m.sex || '', birth_date: m.birth_date || '',
       baptized: m.baptized, member_type: m.member_type,
       /**
-       * Al editar, cargar el position_id actual del miembro.
-       * Si el miembro tiene un cargo asignado via FK, se pre-selecciona.
+       * Al editar, cargar position_ids desde la relación M:N (positions[]).
+       * Si el miembro tiene cargos asignados via junction table, se pre-seleccionan.
+       * Fallback: si solo tiene position_id legacy (1:N), usarlo como array de 1.
        */
-      position_id: m.position_id || '',
+      position_ids: m.positions && m.positions.length > 0
+        ? m.positions.map(p => p.id)
+        : (m.position_id ? [m.position_id] : []),
       phone: m.phone || '', email: m.email || '', address: m.address || '',
     });
     setShowModal(true);
@@ -183,32 +192,45 @@ const MembersContent = ({ churchId, churchName, backButton }) => {
   };
 
   /**
-   * Muestra el nombre del cargo ministerial como Chip.
-   * Busca primero en la relación 'position' (FK nuevo),
-   * luego cae al campo legacy 'church_role' (texto estático).
+   * Muestra los cargos ministeriales como Chips.
+   * Prioridad: positions[] (M:N) → position (1:N legacy) → church_role (texto legacy).
    */
   const getPositionDisplay = (member) => {
-    // Prioridad 1: cargo dinámico via position (relación incluida por el backend)
-    if (member.position) {
+    // Prioridad 1: cargos M:N desde junction table (array de objetos con id, name)
+    if (member.positions && member.positions.length > 0) {
       return (
-        <Chip label={member.position.name} size="small" color="secondary" variant="outlined" />
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+          {member.positions.map(p => (
+            <Chip key={p.id} label={p.name} size="small" color="secondary" variant="outlined" />
+          ))}
+        </Box>
       );
     }
-    // Prioridad 2: cargo legacy (texto estático en church_role)
+    // Prioridad 2: cargo 1:N legacy via position FK
+    if (member.position) {
+      return <Chip label={member.position.name} size="small" color="secondary" variant="outlined" />;
+    }
+    // Prioridad 3: cargo legacy (texto estático en church_role)
     if (member.church_role) {
-      return (
-        <Chip label={member.church_role} size="small" color="default" variant="outlined" />
-      );
+      return <Chip label={member.church_role} size="small" color="default" variant="outlined" />;
     }
     return <Typography variant="caption" color="text.secondary">-</Typography>;
   };
 
-  /** Formatear fecha de nacimiento */
+  /**
+   * Formatear fecha de cumpleaños (formato MM-DD → "15 de marzo").
+   * Solo muestra mes y día, sin año, porque solo interesa el cumpleaños.
+   */
   const formatBirthDate = (d) => {
     if (!d) return '-';
-    return new Date(d + 'T00:00:00').toLocaleDateString('es-ES', {
-      year: 'numeric', month: 'short', day: 'numeric',
-    });
+    const monthNames = ['enero','febrero','marzo','abril','mayo','junio',
+      'julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    const parts = d.split('-');
+    if (parts.length !== 2) return d; // Fallback si formato inesperado
+    const monthIdx = parseInt(parts[0], 10) - 1;
+    const day = parseInt(parts[1], 10);
+    if (monthIdx < 0 || monthIdx > 11 || isNaN(day)) return d;
+    return `${day} de ${monthNames[monthIdx]}`;
   };
 
   return (
@@ -240,11 +262,25 @@ const MembersContent = ({ churchId, churchName, backButton }) => {
             {MEMBER_TYPES.map((t) => <MenuItem key={t} value={t}>{t}</MenuItem>)}
           </Select>
         </FormControl>
-        {/* Filtro de cargo ministerial: usa cargos dinámicos de la BD */}
-        <FormControl size="small" sx={{ minWidth: 170 }}>
+        {/* Filtro multi-select de cargo ministerial (F5) */}
+        <FormControl size="small" sx={{ minWidth: 200 }}>
           <InputLabel>Cargo Ministerial</InputLabel>
-          <Select value={filterPosition} onChange={(e) => setFilterPosition(e.target.value)} label="Cargo Ministerial">
-            <MenuItem value="">Todos</MenuItem>
+          <Select
+            multiple
+            value={filterPosition}
+            onChange={(e) => setFilterPosition(e.target.value)}
+            label="Cargo Ministerial"
+            renderValue={(selected) => (
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                {selected.map(id => {
+                  const pos = positions.find(p => p.id === id);
+                  return pos ? <Chip key={id} label={pos.name} size="small"
+                    onDelete={() => setFilterPosition(prev => prev.filter(v => v !== id))}
+                    onMouseDown={(e) => e.stopPropagation()} /> : null;
+                })}
+              </Box>
+            )}
+          >
             {positions.map((p) => (
               <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
             ))}
@@ -252,20 +288,63 @@ const MembersContent = ({ churchId, churchName, backButton }) => {
         </FormControl>
       </Paper>
 
-      {/* Tabla */}
+      {/* Vista móvil: cards de miembros */}
+      {isMobile ? (
+        <Box>
+          {loading ? (
+            <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress /></Box>
+          ) : members.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>No se encontraron miembros</Typography>
+          ) : members.map((m) => (
+            <Paper key={m.id} sx={{ p: 2, mb: 1.5, borderLeft: '4px solid #1565C0' }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <Box sx={{ flex: 1 }}>
+                  <Typography fontWeight={600} fontSize={14}>{m.first_name} {m.last_name}</Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                    <Chip label={m.member_type} size="small" color={typeColor(m.member_type)} />
+                    {m.baptized && <Chip label="Bautizado" size="small" color="info" variant="outlined" />}
+                  </Box>
+                  {(m.positions?.length > 0 || m.position || m.church_role) && (
+                    <Box sx={{ mt: 0.5 }}>{getPositionDisplay(m)}</Box>
+                  )}
+                </Box>
+                <Box sx={{ display: 'flex', gap: 0.5 }}>
+                  {hasRole('Administrador', 'Secretaría', 'Líder') && (
+                    <IconButton size="small" onClick={() => openEdit(m)} color="primary"><EditIcon fontSize="small" /></IconButton>
+                  )}
+                  {hasRole('Administrador') && (
+                    <IconButton size="small" onClick={() => handleDelete(m.id)} color="error"><DeleteIcon fontSize="small" /></IconButton>
+                  )}
+                </Box>
+              </Box>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+                {m.phone && <Typography variant="caption" color="text.secondary">{m.phone}</Typography>}
+                {m.birth_date && <Typography variant="caption" color="text.secondary">{formatBirthDate(m.birth_date)}</Typography>}
+                {m.age && <Typography variant="caption" color="text.secondary">{m.age} años</Typography>}
+              </Box>
+            </Paper>
+          ))}
+          <TablePagination
+            component="div" count={pagination.total} page={pagination.page}
+            onPageChange={(_, p) => loadMembers(p)} rowsPerPage={15}
+            rowsPerPageOptions={[15]} labelDisplayedRows={({ from, to, count }) => `${from}-${to} de ${count}`}
+          />
+        </Box>
+      ) : (
+      /* Vista desktop: tabla de miembros */
       <Paper>
         <TableContainer>
           <Table size="small">
             <TableHead>
               <TableRow>
                 <TableCell>Nombre</TableCell>
-                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Edad</TableCell>
-                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>F. Nacimiento</TableCell>
-                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Sexo</TableCell>
+                <TableCell>Edad</TableCell>
+                <TableCell>F. Nacimiento</TableCell>
+                <TableCell>Sexo</TableCell>
                 <TableCell>Tipo</TableCell>
-                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Cargo</TableCell>
-                <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>Bautizado</TableCell>
-                <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>Teléfono</TableCell>
+                <TableCell>Cargo</TableCell>
+                <TableCell>Bautizado</TableCell>
+                <TableCell>Teléfono</TableCell>
                 <TableCell align="right">Acciones</TableCell>
               </TableRow>
             </TableHead>
@@ -278,22 +357,14 @@ const MembersContent = ({ churchId, churchName, backButton }) => {
                 <TableRow key={m.id} hover>
                   <TableCell>
                     <Typography fontWeight={600} fontSize={14}>{m.first_name} {m.last_name}</Typography>
-                    {/* En móvil mostrar cargo debajo del nombre */}
-                    {(m.position || m.church_role) && (
-                      <Box sx={{ display: { md: 'none' }, mt: 0.5 }}>
-                        {getPositionDisplay(m)}
-                      </Box>
-                    )}
                   </TableCell>
-                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{m.age || '-'}</TableCell>
-                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>{formatBirthDate(m.birth_date)}</TableCell>
-                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{m.sex === 'M' ? 'M' : m.sex === 'F' ? 'F' : '-'}</TableCell>
+                  <TableCell>{m.age || '-'}</TableCell>
+                  <TableCell>{formatBirthDate(m.birth_date)}</TableCell>
+                  <TableCell>{m.sex === 'M' ? 'M' : m.sex === 'F' ? 'F' : '-'}</TableCell>
                   <TableCell><Chip label={m.member_type} size="small" color={typeColor(m.member_type)} /></TableCell>
-                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
-                    {getPositionDisplay(m)}
-                  </TableCell>
-                  <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>{m.baptized ? '✅' : '❌'}</TableCell>
-                  <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>{m.phone || '-'}</TableCell>
+                  <TableCell>{getPositionDisplay(m)}</TableCell>
+                  <TableCell>{m.baptized ? '✅' : '❌'}</TableCell>
+                  <TableCell>{m.phone || '-'}</TableCell>
                   <TableCell align="right">
                     {hasRole('Administrador', 'Secretaría', 'Líder') && (
                       <IconButton size="small" onClick={() => openEdit(m)} color="primary"><EditIcon fontSize="small" /></IconButton>
@@ -313,6 +384,7 @@ const MembersContent = ({ churchId, churchName, backButton }) => {
           rowsPerPageOptions={[15]} labelDisplayedRows={({ from, to, count }) => `${from}-${to} de ${count}`}
         />
       </Paper>
+      )}
 
       {/* ===== DIALOG CREAR/EDITAR ===== */}
       <Dialog open={showModal} onClose={() => setShowModal(false)} maxWidth="sm" fullWidth
@@ -331,13 +403,44 @@ const MembersContent = ({ churchId, churchName, backButton }) => {
                   value={form.last_name} onChange={(e) => setForm({ ...form, last_name: e.target.value })} />
               </Grid>
 
-              {/* Fecha de Nacimiento y Edad */}
-              <Grid item xs={12} sm={4}>
-                <TextField fullWidth size="small" label="Fecha de Nacimiento"
-                  type="date" InputLabelProps={{ shrink: true }}
-                  value={form.birth_date}
-                  onChange={(e) => setForm({ ...form, birth_date: e.target.value })}
-                />
+              {/* Cumpleaños (solo mes y día, sin año) */}
+              <Grid item xs={6} sm={2}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Mes Nac.</InputLabel>
+                  <Select
+                    value={form.birth_date ? form.birth_date.split('-')[0] || '' : ''}
+                    onChange={(e) => {
+                      const month = e.target.value;
+                      const day = form.birth_date ? form.birth_date.split('-')[1] || '' : '';
+                      setForm({ ...form, birth_date: month && day ? `${month}-${day}` : (month ? `${month}-` : '') });
+                    }}
+                    label="Mes Nac."
+                  >
+                    <MenuItem value=""><em>—</em></MenuItem>
+                    {['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'].map((name, i) => (
+                      <MenuItem key={i} value={String(i + 1).padStart(2, '0')}>{name}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={6} sm={2}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Día</InputLabel>
+                  <Select
+                    value={form.birth_date ? form.birth_date.split('-')[1] || '' : ''}
+                    onChange={(e) => {
+                      const day = e.target.value;
+                      const month = form.birth_date ? form.birth_date.split('-')[0] || '' : '';
+                      setForm({ ...form, birth_date: month && day ? `${month}-${day}` : '' });
+                    }}
+                    label="Día"
+                  >
+                    <MenuItem value=""><em>—</em></MenuItem>
+                    {Array.from({ length: 31 }, (_, i) => (
+                      <MenuItem key={i} value={String(i + 1).padStart(2, '0')}>{i + 1}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </Grid>
               <Grid item xs={6} sm={4}>
                 <TextField fullWidth size="small" label="Edad" type="number"
@@ -368,21 +471,30 @@ const MembersContent = ({ churchId, churchName, backButton }) => {
               </Grid>
 
               {/*
-                * CARGO MINISTERIAL DINÁMICO:
-                * Las opciones provienen del módulo "Cargos Ministeriales"
-                * (GET /api/ministerial-positions). Cuando el admin crea un cargo
-                * nuevo en esa sección, aparece automáticamente aquí.
-                * Se guarda como position_id (FK a ministerial_positions).
+                * CARGO MINISTERIAL DINÁMICO (M:N):
+                * Multi-select que permite asignar múltiples cargos a un miembro.
+                * Las opciones provienen de GET /api/ministerial-positions.
+                * Se envían como position_ids[] al backend.
                 */}
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Cargo Ministerial (opcional)</InputLabel>
                   <Select
-                    value={form.position_id}
-                    onChange={(e) => setForm({ ...form, position_id: e.target.value })}
+                    multiple
+                    value={form.position_ids}
+                    onChange={(e) => setForm({ ...form, position_ids: e.target.value })}
                     label="Cargo Ministerial (opcional)"
+                    renderValue={(selected) =>
+                      selected.length === 0 ? '' : (
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                          {selected.map(id => {
+                            const pos = positions.find(p => p.id === id);
+                            return pos ? <Chip key={id} label={pos.name} size="small" /> : null;
+                          })}
+                        </Box>
+                      )
+                    }
                   >
-                    <MenuItem value="">Sin cargo</MenuItem>
                     {positions.map((p) => (
                       <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
                     ))}

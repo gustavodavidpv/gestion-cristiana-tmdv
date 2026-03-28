@@ -22,6 +22,7 @@ import {
   IconButton, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
   Grid, CircularProgress, TablePagination, Divider, List, ListItem,
   ListItemIcon, ListItemText, ListItemSecondaryAction, Alert, LinearProgress,
+  useMediaQuery, useTheme,
 } from '@mui/material';
 import {
   Add as AddIcon, Visibility as ViewIcon, Delete as DeleteIcon,
@@ -59,6 +60,8 @@ const formatFileSize = (bytes) => {
 
 const Minutes = () => {
   const { hasRole } = useAuth();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [minutes, setMinutes] = useState([]);
   const [pagination, setPagination] = useState({ page: 0, total: 0 });
   const [loading, setLoading] = useState(true);
@@ -262,69 +265,101 @@ const Minutes = () => {
       </Box>
 
       {/* Tabla de actas */}
-      <Paper>
-        <TableContainer>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Título</TableCell>
-                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Fecha</TableCell>
-                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Objetivo</TableCell>
-                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Creado por</TableCell>
-                <TableCell align="center" sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Archivos</TableCell>
-                <TableCell align="right">Acciones</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {loading ? (
-                <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}><CircularProgress /></TableCell></TableRow>
-              ) : minutes.length === 0 ? (
-                <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}>No hay actas registradas</TableCell></TableRow>
-              ) : minutes.map((m) => (
-                <TableRow key={m.id} hover>
-                  <TableCell>
-                    <Typography fontWeight={600} fontSize={14}>{m.title}</Typography>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: { sm: 'none' } }}>
-                      {formatDate(m.meeting_date)}
-                    </Typography>
-                  </TableCell>
-                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{formatDate(m.meeting_date)}</TableCell>
-                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' }, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {m.objective || '-'}
-                  </TableCell>
-                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>{m.creator?.full_name || '-'}</TableCell>
-                  <TableCell align="center" sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
-                    {/* Mostrar cantidad de archivos adjuntos */}
-                    <Chip
-                      icon={<AttachIcon />}
-                      label={m.files?.length || 0}
-                      size="small"
-                      variant="outlined"
-                      color={m.files?.length > 0 ? 'primary' : 'default'}
-                    />
-                  </TableCell>
-                  <TableCell align="right">
-                    <IconButton size="small" onClick={() => viewDetail(m.id)} color="primary" title="Ver detalle">
-                      <ViewIcon fontSize="small" />
-                    </IconButton>
-                    {hasRole('Administrador') && (
-                      <IconButton size="small" onClick={() => handleDelete(m.id)} color="error" title="Eliminar">
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    )}
-                  </TableCell>
+      {isMobile ? (
+        <Box>
+          {loading ? (
+            <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress /></Box>
+          ) : minutes.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>No hay actas registradas</Typography>
+          ) : minutes.map((m) => (
+            <Paper key={m.id} sx={{ p: 2, mb: 1.5, borderLeft: '4px solid #6A1B9A' }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <Box sx={{ flex: 1 }}>
+                  <Typography fontWeight={600} fontSize={14}>{m.title}</Typography>
+                  <Typography variant="caption" color="text.secondary">{formatDate(m.meeting_date)}</Typography>
+                  {m.objective && <Typography variant="caption" display="block" color="text.secondary" noWrap>{m.objective}</Typography>}
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  {m.files?.length > 0 && <Chip icon={<AttachIcon />} label={m.files.length} size="small" variant="outlined" color="primary" />}
+                </Box>
+              </Box>
+              <Box sx={{ display: 'flex', gap: 0.5, mt: 1, justifyContent: 'flex-end' }}>
+                <IconButton size="small" onClick={() => viewDetail(m.id)} color="primary"><ViewIcon fontSize="small" /></IconButton>
+                {hasRole('Administrador') && (
+                  <IconButton size="small" onClick={() => handleDelete(m.id)} color="error"><DeleteIcon fontSize="small" /></IconButton>
+                )}
+              </Box>
+            </Paper>
+          ))}
+          <TablePagination component="div" count={pagination.total} page={pagination.page}
+            onPageChange={(_, p) => loadMinutes(p)} rowsPerPage={15} rowsPerPageOptions={[15]}
+            labelDisplayedRows={({ from, to, count }) => `${from}-${to} de ${count}`} />
+        </Box>
+      ) : (
+        <Paper>
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Título</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Fecha</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Objetivo</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Creado por</TableCell>
+                  <TableCell align="center" sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Archivos</TableCell>
+                  <TableCell align="right">Acciones</TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-        <TablePagination component="div" count={pagination.total} page={pagination.page}
-          onPageChange={(_, p) => loadMinutes(p)} rowsPerPage={15} rowsPerPageOptions={[15]}
-          labelDisplayedRows={({ from, to, count }) => `${from}-${to} de ${count}`} />
-      </Paper>
+              </TableHead>
+              <TableBody>
+                {loading ? (
+                  <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}><CircularProgress /></TableCell></TableRow>
+                ) : minutes.length === 0 ? (
+                  <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}>No hay actas registradas</TableCell></TableRow>
+                ) : minutes.map((m) => (
+                  <TableRow key={m.id} hover>
+                    <TableCell>
+                      <Typography fontWeight={600} fontSize={14}>{m.title}</Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: { sm: 'none' } }}>
+                        {formatDate(m.meeting_date)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{formatDate(m.meeting_date)}</TableCell>
+                    <TableCell sx={{ display: { xs: 'none', md: 'table-cell' }, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {m.objective || '-'}
+                    </TableCell>
+                    <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>{m.creator?.full_name || '-'}</TableCell>
+                    <TableCell align="center" sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
+                      {/* Mostrar cantidad de archivos adjuntos */}
+                      <Chip
+                        icon={<AttachIcon />}
+                        label={m.files?.length || 0}
+                        size="small"
+                        variant="outlined"
+                        color={m.files?.length > 0 ? 'primary' : 'default'}
+                      />
+                    </TableCell>
+                    <TableCell align="right">
+                      <IconButton size="small" onClick={() => viewDetail(m.id)} color="primary" title="Ver detalle">
+                        <ViewIcon fontSize="small" />
+                      </IconButton>
+                      {hasRole('Administrador') && (
+                        <IconButton size="small" onClick={() => handleDelete(m.id)} color="error" title="Eliminar">
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <TablePagination component="div" count={pagination.total} page={pagination.page}
+            onPageChange={(_, p) => loadMinutes(p)} rowsPerPage={15} rowsPerPageOptions={[15]}
+            labelDisplayedRows={({ from, to, count }) => `${from}-${to} de ${count}`} />
+        </Paper>
+      )}
 
       {/* ===== DIALOG: CREAR ACTA ===== */}
-      <Dialog open={showModal} onClose={() => setShowModal(false)} maxWidth="md" fullWidth>
+      <Dialog open={showModal} onClose={() => setShowModal(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <form onSubmit={handleSubmit}>
           <DialogTitle>Nueva Acta</DialogTitle>
           <DialogContent dividers>
@@ -397,7 +432,7 @@ const Minutes = () => {
       </Dialog>
 
       {/* ===== DIALOG: DETALLE DE ACTA + ARCHIVOS ===== */}
-      <Dialog open={!!showDetail} onClose={() => setShowDetail(null)} maxWidth="md" fullWidth>
+      <Dialog open={!!showDetail} onClose={() => setShowDetail(null)} maxWidth="md" fullWidth fullScreen={isMobile}>
         {showDetail && (
           <>
             <DialogTitle>

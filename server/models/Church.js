@@ -86,6 +86,15 @@ const Church = sequelize.define('Church', {
     allowNull: true,
     comment: 'URL del logo para la pantalla de login',
   },
+  /**
+   * initials - Iniciales de la iglesia para mostrar en el sidebar y branding.
+   * Ejemplo: "TMDV", "ICB", "IEP". Editable desde el módulo de Iglesias.
+   */
+  initials: {
+    type: DataTypes.STRING(10),
+    allowNull: true,
+    comment: 'Iniciales de la iglesia para sidebar y branding',
+  },
 
   // =============================================
   // CONFIGURACIÓN DE NOTIFICACIONES WHATSAPP

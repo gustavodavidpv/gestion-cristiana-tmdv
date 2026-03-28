@@ -114,18 +114,22 @@ async function recalculateAvgWeeklyAttendance(church) {
 async function recalculateChurchRoleCounts(church) {
   try {
     /**
-     * Query con LEFT JOIN a ministerial_positions.
-     * COALESCE prioriza el nombre del cargo dinámico (position) sobre el texto legacy (church_role).
-     * COUNT(DISTINCT m.id) evita doble conteo si ambos campos están seteados.
+     * Query con LEFT JOIN a member_positions (junction table M:N) y ministerial_positions.
+     * Prioriza los cargos de la junction table sobre el campo legacy church_role.
+     * COUNT(DISTINCT m.id) evita doble conteo si un miembro tiene múltiples cargos.
+     *
+     * Flujo: member → member_positions → ministerial_positions.name
+     * Fallback: Si no hay entries en junction table, usa m.church_role (legacy)
      */
     const counts = await sequelize.query(`
-      SELECT 
+      SELECT
         COALESCE(mp.name, m.church_role) AS role_name,
         COUNT(DISTINCT m.id) AS count
       FROM members m
-      LEFT JOIN ministerial_positions mp ON m.position_id = mp.id
+      LEFT JOIN member_positions mpos ON m.id = mpos.member_id
+      LEFT JOIN ministerial_positions mp ON mpos.position_id = mp.id
       WHERE m.church_id = :churchId
-        AND (m.church_role IS NOT NULL OR m.position_id IS NOT NULL)
+        AND (m.church_role IS NOT NULL OR mpos.position_id IS NOT NULL)
       GROUP BY COALESCE(mp.name, m.church_role)
     `, {
       replacements: { churchId: church.id },

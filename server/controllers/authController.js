@@ -59,7 +59,8 @@ const authController = {
         where: { email },
         include: [
           { model: Role, as: 'role' },
-          { model: Church, as: 'church', attributes: ['id', 'name'] },
+          // Incluir login_logo_url e initials para el sidebar dinámico
+          { model: Church, as: 'church', attributes: ['id', 'name', 'login_logo_url', 'initials'] },
         ],
       });
 

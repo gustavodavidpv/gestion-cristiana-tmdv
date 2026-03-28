@@ -1,5 +1,6 @@
-const { Member, Church, MinisterialPosition } = require('../models');
+const { Member, Church, MinisterialPosition, MemberPosition } = require('../models');
 const { Op } = require('sequelize');
+const { sequelize } = require('../config/database');
 const { recalculateChurchRoleCounts, recalculateMembershipCount } = require('../utils/churchStats');
 const { isSuperAdmin, applyTenantFilter } = require('../middleware/auth');
 
@@ -43,19 +44,25 @@ function sanitizeMemberData(data) {
     sanitized.position_id = isNaN(parsed) ? null : parsed;
   }
 
+  // birth_date: validar formato MM-DD (ej: "03-15")
+  // Si no cumple el formato, descartarlo para evitar datos inválidos
+  if (sanitized.birth_date && !/^\d{2}-\d{2}$/.test(sanitized.birth_date)) {
+    sanitized.birth_date = null;
+  }
+
   return sanitized;
 }
 
 /**
- * Auto-sincroniza el campo church_role desde position_id.
- * 
+ * Auto-sincroniza el campo church_role desde position_id (legacy 1:N).
+ *
  * Cuando un miembro tiene position_id asignado, busca el nombre del cargo
  * en ministerial_positions y lo copia a church_role. Esto permite que las
  * estadísticas de la iglesia (ordained_preachers, unordained_preachers, etc.)
  * sigan funcionando correctamente porque leen desde church_role.
- * 
+ *
  * Si position_id es null (sin cargo), church_role también se pone en null.
- * 
+ *
  * @param {Object} data - Datos sanitizados del miembro
  * @returns {Object} Datos con church_role sincronizado
  */
@@ -78,16 +85,68 @@ async function syncChurchRoleFromPosition(data) {
   return data;
 }
 
+/**
+ * Auto-sincroniza church_role y position_id desde un array de position_ids (M:N).
+ *
+ * Usado cuando el frontend envía position_ids[] (múltiples cargos).
+ * - church_role se llena con los nombres unidos por ", " para backward compat con stats
+ * - position_id se mantiene con el primer cargo para backward compat con asociación 1:N
+ *
+ * @param {Object} data - Datos sanitizados del miembro
+ * @param {number[]} positionIds - Array de IDs de cargos ministeriales
+ * @returns {Object} Datos con church_role y position_id sincronizados
+ */
+async function syncChurchRoleFromPositions(data, positionIds) {
+  if (!positionIds || positionIds.length === 0) {
+    data.church_role = null;
+    data.position_id = null;
+    return data;
+  }
+  try {
+    const positions = await MinisterialPosition.findAll({
+      where: { id: positionIds },
+      attributes: ['id', 'name'],
+    });
+    // Unir nombres con ", " para church_role (backward compat con stats)
+    data.church_role = positions.map(p => p.name).join(', ');
+    // Mantener position_id con el primer cargo (backward compat con 1:N)
+    data.position_id = positionIds[0];
+  } catch (err) {
+    console.error('[SYNC] Error al sincronizar church_role desde position_ids:', err.message);
+  }
+  return data;
+}
+
+/**
+ * Guarda los cargos M:N de un miembro en la tabla junction member_positions.
+ * Borra las entradas existentes y crea las nuevas (REPLACE strategy).
+ *
+ * @param {number} memberId - ID del miembro
+ * @param {number[]} positionIds - Array de IDs de cargos
+ */
+async function saveMemberPositions(memberId, positionIds) {
+  // Eliminar cargos existentes
+  await MemberPosition.destroy({ where: { member_id: memberId } });
+  // Crear nuevos si hay alguno
+  if (positionIds && positionIds.length > 0) {
+    await MemberPosition.bulkCreate(
+      positionIds.map(pid => ({ member_id: memberId, position_id: pid })),
+      { ignoreDuplicates: true }
+    );
+  }
+}
+
 const memberController = {
-  // GET /api/members?church_id=X&search=Y&member_type=Z&church_role=W
+  // GET /api/members?church_id=X&search=Y&member_type=Z&church_role=W&position_ids=1,2,3
   async getAll(req, res) {
     try {
-      const { church_id, member_type, church_role, position_id, baptized, search, page = 1, limit = 20 } = req.query;
+      const { church_id, member_type, church_role, position_id, position_ids, baptized, search, page = 1, limit = 20 } = req.query;
 
       const where = {};
       if (church_id) where.church_id = church_id;
       if (member_type) where.member_type = member_type;
       if (church_role) where.church_role = church_role;
+      // Legacy: filtro por position_id único (backward compat)
       if (position_id) where.position_id = position_id;
       if (baptized !== undefined) where.baptized = baptized === 'true';
       if (search) {
@@ -103,15 +162,35 @@ const memberController = {
 
       const offset = (parseInt(page) - 1) * parseInt(limit);
 
+      // Includes base: iglesia + cargo legacy (1:N) + cargos M:N
+      const includes = [
+        { model: Church, as: 'church', attributes: ['id', 'name'] },
+        { model: MinisterialPosition, as: 'position', attributes: ['id', 'name'] },
+        // M:N: cargos múltiples del miembro (through member_positions)
+        { model: MinisterialPosition, as: 'positions', attributes: ['id', 'name'], through: { attributes: [] } },
+      ];
+
+      // Filtro multi-select por position_ids (comma-separated): filtra por junction table
+      if (position_ids) {
+        const ids = position_ids.split(',').map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+        if (ids.length > 0) {
+          includes.push({
+            model: MemberPosition,
+            as: 'member_positions',
+            where: { position_id: { [Op.in]: ids } },
+            required: true,
+            attributes: [],
+          });
+        }
+      }
+
       const { rows: members, count: total } = await Member.findAndCountAll({
         where,
-        include: [
-          { model: Church, as: 'church', attributes: ['id', 'name'] },
-          { model: MinisterialPosition, as: 'position', attributes: ['id', 'name'] },
-        ],
+        include: includes,
         order: [['last_name', 'ASC'], ['first_name', 'ASC']],
         limit: parseInt(limit),
         offset,
+        distinct: true, // Evitar conteo duplicado por JOIN con junction table
       });
 
       res.json({
@@ -135,6 +214,8 @@ const memberController = {
         include: [
           { model: Church, as: 'church', attributes: ['id', 'name'] },
           { model: MinisterialPosition, as: 'position', attributes: ['id', 'name'] },
+          // M:N: cargos múltiples del miembro
+          { model: MinisterialPosition, as: 'positions', attributes: ['id', 'name'], through: { attributes: [] } },
         ],
       });
 
@@ -151,12 +232,14 @@ const memberController = {
   /**
    * POST /api/members
    * Crear un nuevo miembro.
-   * 
+   *
    * Flujo:
    * 1. Sanitizar datos ('' → null para campos opcionales)
-   * 2. Si tiene position_id, auto-sincronizar church_role con el nombre del cargo
-   * 3. Crear el miembro
-   * 4. Recalcular estadísticas: membership_count + cargos ministeriales
+   * 2. Determinar cargos: acepta position_ids[] (M:N) o position_id (legacy 1:N)
+   * 3. Auto-sincronizar church_role desde los cargos asignados
+   * 4. Crear el miembro
+   * 5. Guardar relaciones M:N en member_positions
+   * 6. Recalcular estadísticas: membership_count + cargos ministeriales
    */
   async create(req, res) {
     try {
@@ -166,12 +249,20 @@ const memberController = {
       // Asignar church_id del usuario si no viene explícito
       data.church_id = data.church_id || req.user.church_id;
 
-      // Paso 2: Auto-sincronizar church_role desde position_id
-      // Si el miembro tiene un cargo dinámico asignado, copiar el nombre
-      // del cargo a church_role para que las estadísticas funcionen.
-      data = await syncChurchRoleFromPosition(data);
+      // Paso 2: Determinar cargos (M:N o legacy 1:N)
+      const positionIds = Array.isArray(req.body.position_ids)
+        ? req.body.position_ids.filter(id => id).map(id => parseInt(id, 10))
+        : (data.position_id ? [data.position_id] : []);
 
-      // Paso 3: Crear el miembro
+      // Paso 3: Auto-sincronizar church_role y position_id desde los cargos
+      if (positionIds.length > 0) {
+        data = await syncChurchRoleFromPositions(data, positionIds);
+      } else {
+        data.church_role = null;
+        data.position_id = null;
+      }
+
+      // Paso 4: Crear el miembro
       const member = await Member.create({
         church_id: data.church_id,
         first_name: data.first_name,
@@ -188,13 +279,18 @@ const memberController = {
         address: data.address,
       });
 
-      // Paso 4: Recalcular estadísticas de la iglesia
+      // Paso 5: Guardar relaciones M:N en member_positions
+      if (positionIds.length > 0) {
+        await saveMemberPositions(member.id, positionIds);
+      }
+
+      // Paso 6: Recalcular estadísticas de la iglesia
       try {
         const church = await Church.findByPk(member.church_id);
         if (church) {
           await recalculateMembershipCount(church);
           // Recalcular cargos si tiene church_role (ya sea legacy o sincronizado)
-          if (member.church_role || member.position_id) {
+          if (member.church_role || positionIds.length > 0) {
             await recalculateChurchRoleCounts(church);
           }
         }
@@ -211,12 +307,13 @@ const memberController = {
   /**
    * PUT /api/members/:id
    * Actualizar miembro.
-   * 
+   *
    * Flujo:
    * 1. Sanitizar datos
-   * 2. Si cambió position_id, auto-sincronizar church_role
+   * 2. Si se enviaron position_ids[] (M:N) o position_id (legacy), sincronizar
    * 3. Actualizar el miembro
-   * 4. Si cambió cargo o iglesia, recalcular estadísticas
+   * 4. Guardar relaciones M:N en member_positions
+   * 5. Si cambió cargo o iglesia, recalcular estadísticas
    */
   async update(req, res) {
     try {
@@ -233,16 +330,28 @@ const memberController = {
       // Paso 1: Sanitizar campos vacíos → null
       let data = sanitizeMemberData(req.body);
 
-      // Paso 2: Auto-sincronizar church_role desde position_id si cambió
-      // Solo sincronizar si el position_id viene en el body (fue enviado por el frontend)
-      if ('position_id' in req.body) {
+      // Paso 2: Determinar cargos y sincronizar
+      let positionIds = null; // null = no se enviaron, undefined = vacío
+      if ('position_ids' in req.body) {
+        // Frontend envió position_ids[] (M:N)
+        positionIds = Array.isArray(req.body.position_ids)
+          ? req.body.position_ids.filter(id => id).map(id => parseInt(id, 10))
+          : [];
+        data = await syncChurchRoleFromPositions(data, positionIds);
+      } else if ('position_id' in req.body) {
+        // Legacy: frontend envió position_id (1:N)
         data = await syncChurchRoleFromPosition(data);
       }
 
       // Paso 3: Actualizar el miembro
       await member.update(data);
 
-      // Paso 4: Recalcular estadísticas si cambió cargo o iglesia
+      // Paso 4: Guardar relaciones M:N si se enviaron position_ids
+      if (positionIds !== null) {
+        await saveMemberPositions(member.id, positionIds);
+      }
+
+      // Paso 5: Recalcular estadísticas si cambió cargo o iglesia
       const roleChanged = prevRole !== member.church_role;
       const positionChanged = prevPositionId !== member.position_id;
       const churchChanged = prevChurchId !== member.church_id;
