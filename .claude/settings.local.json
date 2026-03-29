@@ -8,7 +8,8 @@
       "Bash(do echo:*)",
       "Bash(node -e \"const fs=require\\(''fs''\\);const c=fs.readFileSync\\(''$f'',''utf8''\\);let b=0,p=0,s=0;for\\(const ch of c\\){if\\(ch===''{''\\)b++;if\\(ch===''}''\\)b--;if\\(ch===''\\(''\\)p++;if\\(ch===''\\)''\\)p--;if\\(ch===''[''\\)s++;if\\(ch==='']''\\)s--;}console.log\\(''braces:'',b,''parens:'',p,''brackets:'',s\\);\")",
       "Bash(done)",
-      "Bash(node -c \"$f\")"
+      "Bash(node -c \"$f\")",
+      "Bash(node -e \"const fs=require\\(''fs''\\);const c=fs.readFileSync\\(''src/pages/Events.js'',''utf8''\\);let b=0,p=0,s=0;for\\(const ch of c\\){if\\(ch===''{''\\)b++;if\\(ch===''}''\\)b--;if\\(ch===''\\(''\\)p++;if\\(ch===''\\)''\\)p--;if\\(ch===''[''\\)s++;if\\(ch==='']''\\)s--;}console.log\\(''braces:'',b,''parens:'',p,''brackets:'',s\\);\")"
     ]
   }
 }

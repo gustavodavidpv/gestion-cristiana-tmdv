@@ -131,7 +131,7 @@ function expandEventToDays(ev, year, month) {
    * Formato: [{ prefix: 'P', name: 'Moises' }, ...]
    */
   const cultoRoles = [];
-  if (ev.event_type === 'Culto') {
+  if (ev.event_type === 'Culto' || ev.event_type === 'Culto Especial') {
     if (ev.preacher_name)        cultoRoles.push({ prefix: 'P', name: ev.preacher_name });
     if (ev.worship_leader_name)  cultoRoles.push({ prefix: 'D', name: ev.worship_leader_name });
     if (ev.singer_name)          cultoRoles.push({ prefix: 'C', name: ev.singer_name });

@@ -22,7 +22,7 @@ import {
   Grid, CircularProgress, TablePagination, InputAdornment, Divider,
   List, ListItem, ListItemText, Checkbox,
   Alert, useMediaQuery, useTheme,
-  ToggleButton, ToggleButtonGroup, Tooltip,
+  ToggleButton, ToggleButtonGroup, Tooltip, Autocomplete,
 } from '@mui/material';
 import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon,
@@ -36,7 +36,7 @@ import {
   Today as TodayIcon,
 } from '@mui/icons-material';
 
-const EVENT_TYPES = ['Evangelismo', 'Culto', 'Reunión', 'Jornada', 'Conferencia', 'Campamento', 'Ventas', 'Otro'];
+const EVENT_TYPES = ['Evangelismo', 'Culto', 'Culto Especial', 'Reunión', 'Jornada', 'Conferencia', 'Campamento', 'Ventas', 'Otro'];
 
 // =============================================
 // CONSTANTES Y UTILIDADES PARA VISTA DE CALENDARIO
@@ -46,6 +46,7 @@ const EVENT_TYPES = ['Evangelismo', 'Culto', 'Reunión', 'Jornada', 'Conferencia
 const EVENT_COLORS = {
   'Evangelismo':  { bg: '#E8F5E9', text: '#1B5E20', border: '#66BB6A' },
   'Culto':        { bg: '#E3F2FD', text: '#0D47A1', border: '#42A5F5' },
+  'Culto Especial': { bg: '#E8EAF6', text: '#1A237E', border: '#5C6BC0' },
   'Reunión':      { bg: '#FFF3E0', text: '#E65100', border: '#FFA726' },
   'Jornada':      { bg: '#F3E5F5', text: '#4A148C', border: '#AB47BC' },
   'Conferencia':  { bg: '#FCE4EC', text: '#880E4F', border: '#EC407A' },
@@ -53,6 +54,9 @@ const EVENT_COLORS = {
   'Ventas':       { bg: '#FFF8E1', text: '#F57F17', border: '#FFB300' },
   'Otro':         { bg: '#F5F5F5', text: '#424242', border: '#BDBDBD' },
 };
+
+/** Retorna true si el tipo de evento es un culto (normal o especial) con roles P/D/C */
+const isCultoType = (type) => type === 'Culto' || type === 'Culto Especial';
 
 /** Nombres cortos de días para el header del calendario (Domingo = index 0) */
 const DAY_NAMES_SHORT = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -99,6 +103,20 @@ function getCalendarGrid(year, month) {
 function formatTimeShort(date) {
   const d = new Date(date);
   return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+}
+
+/**
+ * Convierte un ISO timestamp a formato compatible con input datetime-local
+ * respetando la zona horaria local del navegador.
+ * Ej: "2026-03-29T00:00:00.000Z" → "2026-03-28T19:00" (en UTC-5)
+ * @param {string} isoStr - Fecha ISO del servidor
+ * @returns {string} Formato "YYYY-MM-DDTHH:MM" en hora local
+ */
+function toLocalDatetimeStr(isoStr) {
+  if (!isoStr) return '';
+  const d = new Date(isoStr);
+  const pad = (n) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /**
@@ -361,8 +379,9 @@ const EventsContent = ({ churchId, churchName, backButton }) => {
     setForm({
       title: event.title, description: event.description || '',
       event_type: event.event_type || 'Evangelismo',
-      start_date: event.start_date ? event.start_date.slice(0, 16) : '',
-      end_date: event.end_date ? event.end_date.slice(0, 16) : '',
+      // Convertir ISO a hora local del navegador para el input datetime-local
+      start_date: toLocalDatetimeStr(event.start_date),
+      end_date: toLocalDatetimeStr(event.end_date),
       location: event.location || '',
       // Cargar roles de culto existentes (vacío si no aplica)
       preacher_id: event.preacher_id || '',
@@ -370,7 +389,7 @@ const EventsContent = ({ churchId, churchName, backButton }) => {
       singer_id: event.singer_id || '',
     });
     // Si es tipo Culto, cargar miembros para los selectores
-    if (event.event_type === 'Culto') loadCultoMembers();
+    if (isCultoType(event.event_type)) loadCultoMembers();
     setShowModal(true);
   };
 
@@ -912,7 +931,7 @@ const EventsContent = ({ churchId, churchName, backButton }) => {
                         </Box>
 
                         {/* Roles de culto si aplica */}
-                        {ev.event_type === 'Culto' && (ev.preacher || ev.worship_leader || ev.singer) && (
+                        {isCultoType(ev.event_type) && (ev.preacher || ev.worship_leader || ev.singer) && (
                           <Box sx={{ mt: 0.5, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                             {ev.preacher && (
                               <Chip label={`P: ${ev.preacher.first_name}`} size="small" variant="outlined" color="primary" sx={{ fontSize: 10, height: 20 }} />
@@ -994,7 +1013,7 @@ const EventsContent = ({ churchId, churchName, backButton }) => {
                       {ev.event_type} • {formatDate(ev.start_date)}
                     </Typography>
                     {/* Mostrar roles de culto (P, D, C) debajo del título si es tipo Culto */}
-                    {ev.event_type === 'Culto' && (ev.preacher || ev.worship_leader || ev.singer) && (
+                    {isCultoType(ev.event_type) && (ev.preacher || ev.worship_leader || ev.singer) && (
                       <Box sx={{ mt: 0.5, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                         {ev.preacher && (
                           <Chip label={`P: ${ev.preacher.first_name} ${ev.preacher.last_name}`}
@@ -1068,10 +1087,10 @@ const EventsContent = ({ churchId, churchName, backButton }) => {
                   <Select value={form.event_type} onChange={(e) => {
                     const newType = e.target.value;
                     setForm({ ...form, event_type: newType });
-                    // Si cambió a Culto, cargar lista de miembros para los selectores P/D/C
-                    if (newType === 'Culto' && cultoMembers.length === 0) loadCultoMembers();
-                    // Si cambió de Culto a otro tipo, limpiar roles
-                    if (newType !== 'Culto') {
+                    // Si cambió a Culto o Culto Especial, cargar lista de miembros para los selectores P/D/C
+                    if (isCultoType(newType) && cultoMembers.length === 0) loadCultoMembers();
+                    // Si cambió a un tipo que no es culto, limpiar roles
+                    if (!isCultoType(newType)) {
                       setForm((prev) => ({ ...prev, event_type: newType, preacher_id: '', worship_leader_id: '', singer_id: '' }));
                     }
                   }} label="Tipo">
@@ -1083,8 +1102,8 @@ const EventsContent = ({ churchId, churchName, backButton }) => {
                 <TextField fullWidth size="small" label="Ubicación" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
               </Grid>
 
-              {/* ===== ROLES DE CULTO (solo visible si event_type === 'Culto') ===== */}
-              {form.event_type === 'Culto' && (
+              {/* ===== ROLES DE CULTO (visible si es Culto o Culto Especial) ===== */}
+              {isCultoType(form.event_type) && (
                 <>
                   <Grid item xs={12}>
                     <Divider sx={{ my: 0.5 }} />
@@ -1095,53 +1114,44 @@ const EventsContent = ({ churchId, churchName, backButton }) => {
                       Seleccione quién predica, dirige y canta en este culto.
                     </Typography>
                   </Grid>
-                  {/* Selector: Predica (P) */}
+                  {/* Selector con búsqueda: Predica (P) */}
                   <Grid item xs={12} sm={4}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Predica (P)</InputLabel>
-                      <Select value={form.preacher_id}
-                        onChange={(e) => setForm({ ...form, preacher_id: e.target.value })}
-                        label="Predica (P)">
-                        <MenuItem value=""><em>— Sin asignar —</em></MenuItem>
-                        {cultoMembers.map((m) => (
-                          <MenuItem key={m.id} value={m.id}>
-                            {m.first_name} {m.last_name}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
+                    <Autocomplete
+                      options={cultoMembers}
+                      getOptionLabel={(option) => `${option.first_name} ${option.last_name}`}
+                      value={cultoMembers.find(m => m.id === form.preacher_id) || null}
+                      onChange={(_, newVal) => setForm({ ...form, preacher_id: newVal?.id || '' })}
+                      renderInput={(params) => <TextField {...params} size="small" label="Predica (P)" />}
+                      isOptionEqualToValue={(opt, val) => opt.id === val.id}
+                      noOptionsText="No encontrado"
+                      clearText="Limpiar"
+                    />
                   </Grid>
-                  {/* Selector: Dirige (D) */}
+                  {/* Selector con búsqueda: Dirige (D) */}
                   <Grid item xs={12} sm={4}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Dirige (D)</InputLabel>
-                      <Select value={form.worship_leader_id}
-                        onChange={(e) => setForm({ ...form, worship_leader_id: e.target.value })}
-                        label="Dirige (D)">
-                        <MenuItem value=""><em>— Sin asignar —</em></MenuItem>
-                        {cultoMembers.map((m) => (
-                          <MenuItem key={m.id} value={m.id}>
-                            {m.first_name} {m.last_name}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
+                    <Autocomplete
+                      options={cultoMembers}
+                      getOptionLabel={(option) => `${option.first_name} ${option.last_name}`}
+                      value={cultoMembers.find(m => m.id === form.worship_leader_id) || null}
+                      onChange={(_, newVal) => setForm({ ...form, worship_leader_id: newVal?.id || '' })}
+                      renderInput={(params) => <TextField {...params} size="small" label="Dirige (D)" />}
+                      isOptionEqualToValue={(opt, val) => opt.id === val.id}
+                      noOptionsText="No encontrado"
+                      clearText="Limpiar"
+                    />
                   </Grid>
-                  {/* Selector: Canta (C) */}
+                  {/* Selector con búsqueda: Canta (C) */}
                   <Grid item xs={12} sm={4}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Canta (C)</InputLabel>
-                      <Select value={form.singer_id}
-                        onChange={(e) => setForm({ ...form, singer_id: e.target.value })}
-                        label="Canta (C)">
-                        <MenuItem value=""><em>— Sin asignar —</em></MenuItem>
-                        {cultoMembers.map((m) => (
-                          <MenuItem key={m.id} value={m.id}>
-                            {m.first_name} {m.last_name}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
+                    <Autocomplete
+                      options={cultoMembers}
+                      getOptionLabel={(option) => `${option.first_name} ${option.last_name}`}
+                      value={cultoMembers.find(m => m.id === form.singer_id) || null}
+                      onChange={(_, newVal) => setForm({ ...form, singer_id: newVal?.id || '' })}
+                      renderInput={(params) => <TextField {...params} size="small" label="Canta (C)" />}
+                      isOptionEqualToValue={(opt, val) => opt.id === val.id}
+                      noOptionsText="No encontrado"
+                      clearText="Limpiar"
+                    />
                   </Grid>
                 </>
               )}

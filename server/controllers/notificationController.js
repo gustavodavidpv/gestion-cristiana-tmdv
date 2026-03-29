@@ -35,7 +35,8 @@ async function processRemindersForDate(targetDate, type, churchId = null) {
   endOfDay.setHours(23, 59, 59, 999);
 
   const where = {
-    event_type: 'Culto',
+    // Incluir tanto Culto como Culto Especial para notificaciones de roles
+    event_type: { [Op.in]: ['Culto', 'Culto Especial'] },
     start_date: { [Op.between]: [startOfDay, endOfDay] },
     // Al menos uno de los roles debe estar asignado
     [Op.or]: [
@@ -191,7 +192,8 @@ const notificationController = {
       inSevenDays.setDate(now.getDate() + 7);
 
       const where = {
-        event_type: 'Culto',
+        // Incluir tanto Culto como Culto Especial para roles P/D/C
+        event_type: { [Op.in]: ['Culto', 'Culto Especial'] },
         start_date: { [Op.between]: [now, inSevenDays] },
         // Al menos uno de los roles debe estar asignado
         [Op.or]: [
@@ -281,8 +283,8 @@ const notificationController = {
         return res.status(404).json({ message: 'Evento no encontrado.' });
       }
 
-      if (event.event_type !== 'Culto') {
-        return res.status(400).json({ message: 'Solo se pueden enviar recordatorios para eventos tipo Culto.' });
+      if (event.event_type !== 'Culto' && event.event_type !== 'Culto Especial') {
+        return res.status(400).json({ message: 'Solo se pueden enviar recordatorios para eventos tipo Culto o Culto Especial.' });
       }
 
       const churchName = event.church?.name || 'Iglesia';

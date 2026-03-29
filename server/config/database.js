@@ -21,6 +21,12 @@ if (process.env.DATABASE_URL) {
   sequelize = new Sequelize(process.env.DATABASE_URL, {
     dialect: 'postgres',
     logging: false, // Sin logs SQL en producción
+    /**
+     * Zona horaria America/Panama (UTC-5, sin horario de verano).
+     * Sequelize interpreta datetimes naivos como UTC-5 al guardar,
+     * y retorna timestamps con offset -05:00 al leer.
+     */
+    timezone: '-05:00',
     pool: {
       max: 5,      // Render free tier tiene límites de conexión
       min: 0,
@@ -50,6 +56,11 @@ if (process.env.DATABASE_URL) {
       host: process.env.DB_HOST || 'localhost',
       port: process.env.DB_PORT || 5432,
       dialect: 'postgres',
+      /**
+       * Zona horaria America/Panama (UTC-5, sin horario de verano).
+       * Interpreta datetimes naivos como UTC-5 y retorna con offset -05:00.
+       */
+      timezone: '-05:00',
       logging: process.env.NODE_ENV === 'development' ? console.log : false,
       pool: {
         max: 10,

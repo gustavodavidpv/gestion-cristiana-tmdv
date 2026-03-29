@@ -406,6 +406,33 @@ const runMigrations = async () => {
       console.warn('   ⚠️  member_positions:', e.message);
     }
 
+    // --- 4l. Migración de timezone para eventos existentes ---
+    // Los eventos se guardaban con hora local tratada como UTC.
+    // Ahora Sequelize usa timezone '-05:00' (Panamá), así que los timestamps
+    // existentes se deben ajustar restando 5 horas para que se lean correctamente.
+    // Se usa una columna de control para no ejecutar la migración más de una vez.
+    try {
+      const [tzFlag] = await sequelize.query(
+        `SELECT column_name FROM information_schema.columns
+         WHERE table_name = 'events' AND column_name = 'tz_migrated'`
+      );
+      if (tzFlag.length === 0) {
+        // Marcar que la migración se ejecutó, para no repetirla
+        await sequelize.query(`ALTER TABLE events ADD COLUMN tz_migrated BOOLEAN DEFAULT FALSE`);
+        // Ajustar timestamps: restar 5 horas (UTC-5 Panamá)
+        await sequelize.query(`
+          UPDATE events SET
+            start_date = start_date - INTERVAL '5 hours',
+            end_date = end_date - INTERVAL '5 hours'
+          WHERE start_date IS NOT NULL
+        `);
+        await sequelize.query(`UPDATE events SET tz_migrated = TRUE`);
+        console.log('   ✅ Timestamps de eventos ajustados a timezone Panamá (UTC-5).');
+      }
+    } catch (e) {
+      console.warn('   ⚠️  Migración timezone eventos:', e.message);
+    }
+
     // =========================================================
     // PASO 5: Sincronizar modelos con la BD
     //

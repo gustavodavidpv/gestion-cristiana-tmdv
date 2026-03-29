@@ -9,8 +9,10 @@ const { isSuperAdmin, applyTenantFilter } = require('../middleware/auth');
 /**
  * Includes comunes para cargar roles de culto junto con cada evento.
  * Cada rol es un Member opcional (preacher, worship_leader, singer).
- * Solo tienen sentido cuando event_type === 'Culto'.
+ * Solo tienen sentido cuando event_type es 'Culto' o 'Culto Especial'.
  */
+/** Retorna true si el tipo de evento es un culto (normal o especial) con roles P/D/C */
+const isCultoType = (type) => type === 'Culto' || type === 'Culto Especial';
 const CULTO_ROLE_INCLUDES = [
   { model: Member, as: 'preacher', attributes: ['id', 'first_name', 'last_name', 'phone'] },
   { model: Member, as: 'worship_leader', attributes: ['id', 'first_name', 'last_name', 'phone'] },
@@ -139,7 +141,7 @@ const eventController = {
        * Si el tipo de evento cambia de 'Culto' a otro tipo,
        * limpiar los roles de culto para no dejar datos huérfanos.
        */
-      if (data.event_type && data.event_type !== 'Culto') {
+      if (data.event_type && !isCultoType(data.event_type)) {
         data.preacher_id = null;
         data.worship_leader_id = null;
         data.singer_id = null;

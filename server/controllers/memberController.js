@@ -170,24 +170,29 @@ const memberController = {
         { model: MinisterialPosition, as: 'positions', attributes: ['id', 'name'], through: { attributes: [] } },
       ];
 
-      // Filtro multi-select por position_ids (comma-separated): filtra por junction table
+      /**
+       * Filtro multi-select por position_ids (comma-separated).
+       * Usa subquery en WHERE en vez de include+JOIN para evitar conflicto
+       * con el include M:N de 'positions' que también hace JOIN sobre member_positions.
+       * Los ids se parsean como parseInt para prevenir SQL injection.
+       */
       if (position_ids) {
         const ids = position_ids.split(',').map(id => parseInt(id, 10)).filter(id => !isNaN(id));
         if (ids.length > 0) {
-          includes.push({
-            model: MemberPosition,
-            as: 'member_positions',
-            where: { position_id: { [Op.in]: ids } },
-            required: true,
-            attributes: [],
-          });
+          where.id = {
+            ...(where.id || {}),
+            [Op.in]: sequelize.literal(
+              `(SELECT member_id FROM member_positions WHERE position_id IN (${ids.join(',')}))`
+            ),
+          };
         }
       }
 
       const { rows: members, count: total } = await Member.findAndCountAll({
         where,
         include: includes,
-        order: [['last_name', 'ASC'], ['first_name', 'ASC']],
+        // Orden alfabético por nombre (first_name) según solicitud del usuario
+        order: [['first_name', 'ASC'], ['last_name', 'ASC']],
         limit: parseInt(limit),
         offset,
         distinct: true, // Evitar conteo duplicado por JOIN con junction table
