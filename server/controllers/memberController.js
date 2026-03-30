@@ -140,7 +140,7 @@ const memberController = {
   // GET /api/members?church_id=X&search=Y&member_type=Z&church_role=W&position_ids=1,2,3
   async getAll(req, res) {
     try {
-      const { church_id, member_type, church_role, position_id, position_ids, baptized, search, page = 1, limit = 20 } = req.query;
+      const { church_id, member_type, church_role, position_id, position_ids, baptized, search, birth_month, page = 1, limit = 20 } = req.query;
 
       const where = {};
       if (church_id) where.church_id = church_id;
@@ -155,6 +155,15 @@ const memberController = {
           { last_name: { [Op.iLike]: `%${search}%` } },
           { email: { [Op.iLike]: `%${search}%` } },
         ];
+      }
+
+      /**
+       * Filtro por mes de cumpleaños: birth_date es STRING(5) formato "MM-DD".
+       * Se filtra con LIKE 'MM-%' para obtener todos los miembros del mes indicado.
+       */
+      if (birth_month) {
+        const monthStr = birth_month.padStart(2, '0');
+        where.birth_date = { [Op.like]: `${monthStr}-%` };
       }
 
       // Tenant filtering: SuperAdmin ve todo, otros su iglesia

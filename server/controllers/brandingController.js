@@ -22,7 +22,7 @@ const brandingController = {
   async getBranding(req, res) {
     try {
       const church = await Church.findByPk(req.params.churchId, {
-        attributes: ['id', 'name', 'login_title', 'login_logo_url'],
+        attributes: ['id', 'name', 'login_title', 'login_logo_url', 'initials'],
       });
 
       if (!church) {
@@ -35,6 +35,8 @@ const brandingController = {
           name: church.name,
           login_title: church.login_title || church.name,
           login_logo_url: church.login_logo_url || null,
+          // Iniciales configuradas en branding (usadas en Login como fallback si no hay logo)
+          initials: church.initials || null,
         },
       });
     } catch (error) {

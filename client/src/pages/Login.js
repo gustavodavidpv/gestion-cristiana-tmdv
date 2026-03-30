@@ -18,9 +18,19 @@ import api from '../services/api';
 import { toast } from 'react-toastify';
 import {
   Box, Paper, Typography, TextField, Button, Link,
-  CircularProgress, Alert,
+  CircularProgress, Alert, Avatar, InputAdornment, IconButton,
 } from '@mui/material';
-import { Church as ChurchIcon } from '@mui/icons-material';
+import { Church as ChurchIcon, Visibility, VisibilityOff } from '@mui/icons-material';
+
+/**
+ * Deriva iniciales a partir de un nombre (máx 3 caracteres).
+ * Ej: "Iglesia Cristiana Bethel" → "ICB"
+ * Fallback: "GC" (Gestión Cristiana)
+ */
+const getInitials = (name) => {
+  if (!name) return 'GC';
+  return name.split(/\s+/).map((w) => w[0]).join('').toUpperCase().slice(0, 3);
+};
 
 /** Construye URL completa para archivos estáticos (logos subidos) */
 const getFileUrl = (path) => {
@@ -41,6 +51,7 @@ const Login = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false); // Toggle visibilidad de contraseña
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -49,7 +60,9 @@ const Login = () => {
     title: 'Gestión Cristiana',
     subtitle: 'TMDV',
     logoUrl: null,
+    initials: null, // Iniciales configuradas en branding
   });
+  const [logoError, setLogoError] = useState(false); // Fallback si el logo falla al cargar
 
   // ===== CARGAR BRANDING DE LA IGLESIA PRINCIPAL =====
   useEffect(() => {
@@ -67,7 +80,9 @@ const Login = () => {
             title: data.branding.login_title || data.branding.name || 'Gestión Cristiana',
             subtitle: 'TMDV',
             logoUrl: data.branding.login_logo_url || null,
+            initials: data.branding.initials || null,
           });
+          setLogoError(false); // Reset error al cargar nuevo branding
         }
       } catch {
         // Si falla (iglesia no existe o error de red), usar branding por defecto
@@ -144,8 +159,8 @@ const Login = () => {
       <Paper elevation={8} sx={{ width: '100%', maxWidth: 420, p: 4, borderRadius: 3 }}>
         {/* ===== HEADER CON BRANDING DINÁMICO ===== */}
         <Box sx={{ textAlign: 'center', mb: 3 }}>
-          {/* Logo: usa el de la iglesia si existe, sino el icono por defecto */}
-          {branding.logoUrl ? (
+          {/* Logo: usa el de la iglesia si existe, sino Avatar con iniciales del branding */}
+          {branding.logoUrl && !logoError ? (
             <Box sx={{ mb: 1 }}>
               <img
                 src={getFileUrl(branding.logoUrl)}
@@ -155,14 +170,17 @@ const Login = () => {
                   borderRadius: 8,
                   objectFit: 'contain',
                 }}
-                onError={(e) => {
-                  // Si la imagen falla, ocultar y mostrar icono por defecto
-                  e.target.style.display = 'none';
+                onError={() => {
+                  // Si la imagen falla, mostrar Avatar con iniciales como fallback
+                  setLogoError(true);
                 }}
               />
             </Box>
           ) : (
-            <ChurchIcon sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />
+            /* Avatar con iniciales: usa las del branding si existen, sino las deriva del título */
+            <Avatar sx={{ width: 64, height: 64, bgcolor: 'primary.main', fontSize: 24, mx: 'auto', mb: 1 }}>
+              {branding.initials || getInitials(branding.title)}
+            </Avatar>
           )}
 
           {/* Título dinámico (nombre personalizado de la iglesia) */}
@@ -182,8 +200,21 @@ const Login = () => {
           <form onSubmit={handleLogin}>
             <TextField fullWidth label="Correo electrónico" type="email" required margin="normal" size="small"
               value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
-            <TextField fullWidth label="Contraseña" type="password" required margin="normal" size="small"
-              value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+            <TextField fullWidth label="Contraseña" type={showPassword ? 'text' : 'password'}
+              required margin="normal" size="small"
+              value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password"
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton onClick={() => setShowPassword(!showPassword)}
+                      onMouseDown={(e) => e.preventDefault()} edge="end" size="small"
+                      aria-label="toggle password visibility">
+                      {showPassword ? <VisibilityOff /> : <Visibility />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
             <Button fullWidth variant="contained" type="submit" disabled={loading} sx={{ mt: 2, py: 1.2 }}>
               {loading ? <CircularProgress size={22} color="inherit" /> : 'Iniciar Sesión'}
             </Button>

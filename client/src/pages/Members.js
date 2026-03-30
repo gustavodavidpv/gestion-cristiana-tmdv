@@ -31,6 +31,16 @@ import {
 /** Tipos de miembro disponibles (incluye Infante y Candidato a bautismo) */
 const MEMBER_TYPES = ['Miembro', 'Visitante', 'Familiar', 'Infante', 'Candidato a bautismo', 'Otro'];
 
+/** Opciones de meses para el filtro de cumpleaños */
+const MONTH_OPTIONS = [
+  { value: '01', label: 'Enero' }, { value: '02', label: 'Febrero' },
+  { value: '03', label: 'Marzo' }, { value: '04', label: 'Abril' },
+  { value: '05', label: 'Mayo' }, { value: '06', label: 'Junio' },
+  { value: '07', label: 'Julio' }, { value: '08', label: 'Agosto' },
+  { value: '09', label: 'Septiembre' }, { value: '10', label: 'Octubre' },
+  { value: '11', label: 'Noviembre' }, { value: '12', label: 'Diciembre' },
+];
+
 const emptyForm = {
   first_name: '', last_name: '', age: '', sex: '', birth_date: '',
   baptized: false, member_type: 'Miembro',
@@ -60,6 +70,7 @@ const MembersContent = ({ churchId, churchName, backButton }) => {
    * Permite seleccionar varios cargos simultáneamente (F5).
    */
   const [filterPosition, setFilterPosition] = useState([]);
+  const [filterBirthMonth, setFilterBirthMonth] = useState(''); // Filtro por mes de cumpleaños
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -106,6 +117,8 @@ const MembersContent = ({ churchId, churchName, backButton }) => {
       if (filterType) params.member_type = filterType;
       // Filtrar por cargos ministeriales (multi-select, comma-separated)
       if (filterPosition.length > 0) params.position_ids = filterPosition.join(',');
+      // Filtrar por mes de cumpleaños (ej: '04' para abril)
+      if (filterBirthMonth) params.birth_month = filterBirthMonth;
       const { data } = await api.get('/members', { params });
       setMembers(data.members);
       setPagination({ page, total: data.pagination.total });
@@ -114,7 +127,7 @@ const MembersContent = ({ churchId, churchName, backButton }) => {
     } finally {
       setLoading(false);
     }
-  }, [search, filterType, filterPosition, churchId]);
+  }, [search, filterType, filterPosition, filterBirthMonth, churchId]);
 
   useEffect(() => { loadMembers(); }, [loadMembers]);
 
@@ -284,6 +297,14 @@ const MembersContent = ({ churchId, churchName, backButton }) => {
             {positions.map((p) => (
               <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
             ))}
+          </Select>
+        </FormControl>
+        {/* Filtro por mes de cumpleaños */}
+        <FormControl size="small" sx={{ minWidth: 160 }}>
+          <InputLabel>Mes Cumpleaños</InputLabel>
+          <Select value={filterBirthMonth} onChange={(e) => setFilterBirthMonth(e.target.value)} label="Mes Cumpleaños">
+            <MenuItem value="">Todos</MenuItem>
+            {MONTH_OPTIONS.map((m) => <MenuItem key={m.value} value={m.value}>{m.label}</MenuItem>)}
           </Select>
         </FormControl>
       </Paper>

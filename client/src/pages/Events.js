@@ -236,6 +236,13 @@ const EventsContent = ({ churchId, churchName, backButton }) => {
   const [memberSearch, setMemberSearch] = useState('');
   const [savingAttendees, setSavingAttendees] = useState(false);
 
+  // === Estado del dialog de nuevo miembro rápido (desde asistencia) ===
+  const [showNewMemberModal, setShowNewMemberModal] = useState(false);
+  const [newMemberForm, setNewMemberForm] = useState({
+    first_name: '', last_name: '', member_type: 'Visitante', phone: '',
+  });
+  const [savingNewMember, setSavingNewMember] = useState(false);
+
   // === Estado del modal de Calendario PDF ===
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
@@ -491,6 +498,51 @@ const EventsContent = ({ churchId, churchName, backButton }) => {
     }
     setAttendeesList([...attendeesList, ...newMembers]);
     toast.success(`${newMembers.length} miembros agregados`);
+  };
+
+  /**
+   * Crear un nuevo miembro rápido desde el modal de asistencia.
+   * Después de crearlo, lo agrega automáticamente a la lista de asistentes
+   * y recarga la lista de miembros para que aparezca en el panel izquierdo.
+   */
+  const handleQuickAddMember = async (e) => {
+    e.preventDefault();
+    setSavingNewMember(true);
+    try {
+      const payload = {
+        first_name: newMemberForm.first_name,
+        last_name: newMemberForm.last_name,
+        member_type: newMemberForm.member_type,
+        phone: newMemberForm.phone || null,
+      };
+      // SuperAdmin: enviar church_id de la iglesia seleccionada
+      if (churchId) payload.church_id = churchId;
+
+      const { data } = await api.post('/members', payload);
+      const createdMember = data.member;
+
+      // Auto-agregar a la lista de asistentes
+      addMemberToAttendees({
+        id: createdMember.id,
+        first_name: createdMember.first_name,
+        last_name: createdMember.last_name,
+        member_type: createdMember.member_type,
+      });
+
+      // Recargar lista de miembros para que aparezca en el panel izquierdo
+      const membersParams = { limit: 500 };
+      if (churchId) membersParams.church_id = churchId;
+      const membersRes = await api.get('/members', { params: membersParams });
+      setAllMembers(membersRes.data.members || []);
+
+      toast.success('Miembro creado y agregado a la asistencia');
+      setShowNewMemberModal(false);
+      setNewMemberForm({ first_name: '', last_name: '', member_type: 'Visitante', phone: '' });
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Error al crear miembro');
+    } finally {
+      setSavingNewMember(false);
+    }
   };
 
   /** Quita un miembro de la lista */
@@ -1198,6 +1250,9 @@ const EventsContent = ({ churchId, churchName, backButton }) => {
                 InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }} />
               <Button fullWidth size="small" variant="outlined" startIcon={<SelectAllIcon />}
                 onClick={addAllMembers} sx={{ mb: 1 }}>Agregar todos</Button>
+              {/* Botón para registrar un nuevo miembro rápido desde asistencia */}
+              <Button fullWidth size="small" variant="outlined" color="success" startIcon={<AddIcon />}
+                onClick={() => setShowNewMemberModal(true)} sx={{ mb: 1 }}>Nuevo Miembro</Button>
               <Box sx={{ maxHeight: { xs: 200, sm: '42vh' }, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
                 <List dense disablePadding>
                   {filteredMembers.map((m) => {
@@ -1289,6 +1344,51 @@ const EventsContent = ({ churchId, churchName, backButton }) => {
             {savingAttendees ? 'Guardando...' : 'Guardar Asistencia'}
           </Button>
         </DialogActions>
+      </Dialog>
+
+      {/* ===== DIALOG NUEVO MIEMBRO RÁPIDO (desde asistencia) ===== */}
+      <Dialog open={showNewMemberModal} onClose={() => setShowNewMemberModal(false)} maxWidth="xs" fullWidth>
+        <form onSubmit={handleQuickAddMember}>
+          <DialogTitle>Nuevo Miembro Rápido</DialogTitle>
+          <DialogContent dividers>
+            <Grid container spacing={2} sx={{ mt: 0.5 }}>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth required size="small" label="Nombre"
+                  value={newMemberForm.first_name}
+                  onChange={(e) => setNewMemberForm({ ...newMemberForm, first_name: e.target.value })} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth required size="small" label="Apellido"
+                  value={newMemberForm.last_name}
+                  onChange={(e) => setNewMemberForm({ ...newMemberForm, last_name: e.target.value })} />
+              </Grid>
+              <Grid item xs={12}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Tipo de Miembro</InputLabel>
+                  <Select required value={newMemberForm.member_type}
+                    onChange={(e) => setNewMemberForm({ ...newMemberForm, member_type: e.target.value })}
+                    label="Tipo de Miembro">
+                    {['Miembro', 'Visitante', 'Familiar', 'Infante', 'Candidato a bautismo', 'Otro'].map((t) => (
+                      <MenuItem key={t} value={t}>{t}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12}>
+                <TextField fullWidth size="small" label="Teléfono (opcional)"
+                  value={newMemberForm.phone}
+                  onChange={(e) => setNewMemberForm({ ...newMemberForm, phone: e.target.value })} />
+              </Grid>
+            </Grid>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, py: 2 }}>
+            <Button onClick={() => setShowNewMemberModal(false)}>Cancelar</Button>
+            <Button variant="contained" type="submit" disabled={savingNewMember}
+              startIcon={savingNewMember ? <CircularProgress size={18} color="inherit" /> : <AddIcon />}>
+              {savingNewMember ? 'Creando...' : 'Crear y Agregar'}
+            </Button>
+          </DialogActions>
+        </form>
       </Dialog>
 
       {/* ===== DIALOG SELECCIONAR MES PARA CALENDARIO PDF ===== */}
