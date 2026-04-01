@@ -12,5 +12,6 @@ router.use('/ministerial-positions', require('./ministerialPositions'));
 router.use('/branding', require('./branding'));
 router.use('/notifications', require('./notifications'));
 router.use('/permissions', require('./permissions'));
+router.use('/roles', require('./roles'));
 
 module.exports = router;

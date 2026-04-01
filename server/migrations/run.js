@@ -17,6 +17,7 @@
  * Solución: crear la columna y FK manualmente antes del sync.
  */
 const { sequelize } = require('../models');
+const { ensureSystemRoles, ensureDefaultRolePermissions } = require('../utils/roleSetup');
 
 const runMigrations = async () => {
   try {
@@ -491,6 +492,10 @@ const runMigrations = async () => {
     console.log('🔄 Sincronizando modelos con BD...');
     await sequelize.sync({ alter: true });
     console.log('✅ Sync completado.');
+
+    await ensureSystemRoles();
+    await ensureDefaultRolePermissions();
+    console.log('✅ Roles del sistema y permisos por defecto verificados.');
 
     // =========================================================
     // PASO 6: Recalcular TODAS las estadísticas

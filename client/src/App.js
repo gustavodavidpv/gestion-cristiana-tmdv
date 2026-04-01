@@ -1,21 +1,12 @@
-/**
- * App.js - Componente raíz con layout principal
- * 
- * CAMBIOS v2:
- * - Nuevas rutas: /positions (Cargos), /branding
- * - SuperAdmin tiene acceso a todo (hasRole bypass)
- */
 import React, { useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Box, CircularProgress, Typography, useMediaQuery, useTheme } from '@mui/material';
 import { useAuth } from './context/AuthContext';
 import './styles/index.css';
 
-// Layout
 import Sidebar from './components/layout/Sidebar';
 import Navbar from './components/layout/Navbar';
 
-// Pages
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Members from './pages/Members';
@@ -28,19 +19,25 @@ import MinisterialPositions from './pages/MinisterialPositions';
 import Branding from './pages/Branding';
 import Notifications from './pages/Notifications';
 import Permissions from './pages/Permissions';
+import Roles from './pages/Roles';
 
 const DRAWER_WIDTH = 260;
 
-/**
- * ProtectedRoute - Protege rutas por permisos de módulo.
- * Usa canViewModule(module) para verificar acceso.
- * Si no hay module, cualquier usuario autenticado puede acceder.
- */
-const ProtectedRoute = ({ children, module }) => {
-  const { user, loading, canViewModule } = useAuth();
-  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}><CircularProgress /></Box>;
+const ProtectedRoute = ({ children, module, superAdminOnly = false }) => {
+  const { user, loading, canViewModule, isSuperAdmin } = useAuth();
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
   if (!user) return <Navigate to="/login" />;
+  if (superAdminOnly && !isSuperAdmin()) return <Navigate to="/dashboard" />;
   if (module && !canViewModule(module)) return <Navigate to="/dashboard" />;
+
   return children;
 };
 
@@ -52,9 +49,18 @@ function App() {
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', gap: 2 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: '100vh',
+          gap: 2,
+        }}
+      >
         <CircularProgress size={48} />
-        <Typography color="text.secondary">Cargando Gestión Cristiana - TMDV...</Typography>
+        <Typography color="text.secondary">Cargando Gestion Cristiana - TMDV...</Typography>
       </Box>
     );
   }
@@ -87,37 +93,50 @@ function App() {
         <Box component="main" sx={{ flexGrow: 1, p: { xs: 2, sm: 3 }, mt: '64px' }}>
           <Routes>
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/members" element={
-              <ProtectedRoute module="members"><Members /></ProtectedRoute>
-            } />
-            <Route path="/churches" element={
-              <ProtectedRoute module="churches"><Churches /></ProtectedRoute>
-            } />
-            <Route path="/events" element={
-              <ProtectedRoute module="events"><Events /></ProtectedRoute>
-            } />
-            <Route path="/attendance" element={
-              <ProtectedRoute module="weekly_attendance"><WeeklyAttendance /></ProtectedRoute>
-            } />
-            <Route path="/minutes" element={
-              <ProtectedRoute module="minutes"><Minutes /></ProtectedRoute>
-            } />
-            <Route path="/positions" element={
-              <ProtectedRoute module="positions"><MinisterialPositions /></ProtectedRoute>
-            } />
-            <Route path="/branding" element={
-              <ProtectedRoute module="branding"><Branding /></ProtectedRoute>
-            } />
-            <Route path="/notifications" element={
-              <ProtectedRoute module="notifications"><Notifications /></ProtectedRoute>
-            } />
-            <Route path="/users" element={
-              <ProtectedRoute module="users"><Users /></ProtectedRoute>
-            } />
-            {/* Permisos: solo SuperAdmin (no tiene módulo en DB → canViewModule retorna false para otros) */}
-            <Route path="/permissions" element={
-              <ProtectedRoute module="permissions"><Permissions /></ProtectedRoute>
-            } />
+            <Route
+              path="/members"
+              element={<ProtectedRoute module="members"><Members /></ProtectedRoute>}
+            />
+            <Route
+              path="/churches"
+              element={<ProtectedRoute module="churches"><Churches /></ProtectedRoute>}
+            />
+            <Route
+              path="/events"
+              element={<ProtectedRoute module="events"><Events /></ProtectedRoute>}
+            />
+            <Route
+              path="/attendance"
+              element={<ProtectedRoute module="weekly_attendance"><WeeklyAttendance /></ProtectedRoute>}
+            />
+            <Route
+              path="/minutes"
+              element={<ProtectedRoute module="minutes"><Minutes /></ProtectedRoute>}
+            />
+            <Route
+              path="/positions"
+              element={<ProtectedRoute module="positions"><MinisterialPositions /></ProtectedRoute>}
+            />
+            <Route
+              path="/branding"
+              element={<ProtectedRoute module="branding"><Branding /></ProtectedRoute>}
+            />
+            <Route
+              path="/notifications"
+              element={<ProtectedRoute module="notifications"><Notifications /></ProtectedRoute>}
+            />
+            <Route
+              path="/users"
+              element={<ProtectedRoute module="users"><Users /></ProtectedRoute>}
+            />
+            <Route
+              path="/roles"
+              element={<ProtectedRoute superAdminOnly><Roles /></ProtectedRoute>}
+            />
+            <Route
+              path="/permissions"
+              element={<ProtectedRoute superAdminOnly><Permissions /></ProtectedRoute>}
+            />
             <Route path="/" element={<Navigate to="/dashboard" />} />
             <Route path="*" element={<Navigate to="/dashboard" />} />
           </Routes>

@@ -25,6 +25,7 @@ import {
   Palette as PaletteIcon,
   WhatsApp as WhatsAppIcon,
   Security as SecurityIcon,
+  AssignmentInd as RolesIcon,
 } from '@mui/icons-material';
 
 /**
@@ -44,6 +45,7 @@ const menuItems = [
   { path: '/positions', icon: <BadgeIcon />, label: 'Cargos', module: 'positions' },
   { path: '/branding', icon: <PaletteIcon />, label: 'Branding', module: 'branding' },
   { path: '/users', icon: <AdminIcon />, label: 'Usuarios', module: 'users' },
+  { path: '/roles', icon: <RolesIcon />, label: 'Roles', superAdminOnly: true },
   { path: '/permissions', icon: <SecurityIcon />, label: 'Permisos', superAdminOnly: true },
 ];
 

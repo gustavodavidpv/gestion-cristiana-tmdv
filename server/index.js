@@ -16,6 +16,7 @@ const cors = require('cors');
 const path = require('path');
 const { testConnection } = require('./config/database');
 const routes = require('./routes');
+const { ensureSystemRoles, ensureDefaultRolePermissions } = require('./utils/roleSetup');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -106,6 +107,14 @@ const start = async () => {
   try {
     await sequelize.authenticate();
     console.log('📋 Conexión a la base de datos verificada.');
+
+    try {
+      await ensureSystemRoles();
+      await ensureDefaultRolePermissions();
+      console.log('🔐 Roles del sistema y permisos por defecto verificados.');
+    } catch (roleSetupError) {
+      console.warn('⚠️  Aviso al verificar roles del sistema:', roleSetupError.message);
+    }
 
     // Iniciar scheduler de notificaciones WhatsApp (cron jobs)
     const { startNotificationScheduler } = require('./utils/notificationScheduler');

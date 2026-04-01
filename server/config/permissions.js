@@ -83,6 +83,18 @@ const DEFAULTS = {
     branding: { view: false, edit: false, delete: false },
     users: { view: false, create: false, edit: false, delete: false },
   },
+  Asistencia: {
+    dashboard: { view: true },
+    members: { view: true, create: false, edit: false, delete: false },
+    churches: { view: false, edit: false, delete: false },
+    events: { view: true, create: false, edit: false, delete: false, attendance: true },
+    weekly_attendance: { view: true, create: true, edit: false, delete: false },
+    minutes: { view: false, create: false, edit: false, delete: false },
+    notifications: { view: false, edit: false },
+    positions: { view: false, create: false, edit: false, delete: false },
+    branding: { view: false, edit: false, delete: false },
+    users: { view: false, create: false, edit: false, delete: false },
+  },
   Visitante: {
     dashboard: { view: true },
     members: { view: true, create: false, edit: false, delete: false },

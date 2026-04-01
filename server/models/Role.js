@@ -12,12 +12,25 @@ const Role = sequelize.define('Role', {
     allowNull: false,
     unique: true,
     validate: {
-      isIn: [['SuperAdmin', 'Administrador', 'Secretaría', 'Líder', 'Visitante']],
+      notEmpty: {
+        msg: 'El nombre del rol es requerido.',
+      },
+      len: {
+        args: [2, 50],
+        msg: 'El nombre del rol debe tener entre 2 y 50 caracteres.',
+      },
+    },
+    set(value) {
+      this.setDataValue('name', typeof value === 'string' ? value.trim() : value);
     },
   },
   description: {
     type: DataTypes.TEXT,
     allowNull: true,
+    set(value) {
+      const normalized = typeof value === 'string' ? value.trim() : value;
+      this.setDataValue('description', normalized || null);
+    },
   },
 }, {
   tableName: 'roles',
