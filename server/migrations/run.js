@@ -433,6 +433,55 @@ const runMigrations = async () => {
       console.warn('   ⚠️  Migración timezone eventos:', e.message);
     }
 
+    // --- 4m. Crear tabla role_permissions y sembrar permisos por defecto ---
+    // Tabla de permisos dinámicos por rol. Cada fila es: role + module + action → allowed.
+    // Los defaults coinciden con el comportamiento hardcodeado original.
+    try {
+      const [rpExists] = await sequelize.query(
+        `SELECT table_name FROM information_schema.tables
+         WHERE table_schema = 'public' AND table_name = 'role_permissions'`
+      );
+      if (rpExists.length === 0) {
+        await sequelize.query(`
+          CREATE TABLE role_permissions (
+            id SERIAL PRIMARY KEY,
+            role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+            module VARCHAR(50) NOT NULL,
+            action VARCHAR(30) NOT NULL,
+            allowed BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE(role_id, module, action)
+          )
+        `);
+        console.log('   ✅ Tabla role_permissions creada.');
+
+        // Sembrar permisos por defecto para cada rol (excepto SuperAdmin)
+        const { MODULES, DEFAULTS } = require('../config/permissions');
+        const [roles] = await sequelize.query(
+          `SELECT id, name FROM roles WHERE name != 'SuperAdmin'`
+        );
+        for (const role of roles) {
+          const roleDefaults = DEFAULTS[role.name];
+          if (!roleDefaults) continue;
+          for (const mod of MODULES) {
+            for (const action of mod.actions) {
+              const allowed = roleDefaults[mod.key]?.[action] ?? false;
+              await sequelize.query(
+                `INSERT INTO role_permissions (role_id, module, action, allowed, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, NOW(), NOW())
+                 ON CONFLICT (role_id, module, action) DO NOTHING`,
+                { bind: [role.id, mod.key, action, allowed] }
+              );
+            }
+          }
+        }
+        console.log('   ✅ Permisos por defecto sembrados para todos los roles.');
+      }
+    } catch (e) {
+      console.warn('   ⚠️  role_permissions:', e.message);
+    }
+
     // =========================================================
     // PASO 5: Sincronizar modelos con la BD
     //

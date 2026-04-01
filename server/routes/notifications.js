@@ -12,24 +12,24 @@
 const express = require('express');
 const router = express.Router();
 const { notificationController } = require('../controllers/notificationController');
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate, authorizePermission } = require('../middleware/auth');
 
 router.use(authenticate);
 
-// Estado de configuración WhatsApp
-router.get('/status', authorize('Administrador', 'Secretaría'), notificationController.getStatus);
+// Estado de configuración WhatsApp — ver notificaciones
+router.get('/status', authorizePermission('notifications', 'view'), notificationController.getStatus);
 
 // Horarios de notificación (lectura y escritura)
-router.get('/schedule', authorize('Administrador', 'Secretaría'), notificationController.getSchedule);
-router.put('/schedule', authorize('Administrador', 'Secretaría'), notificationController.saveSchedule);
+router.get('/schedule', authorizePermission('notifications', 'view'), notificationController.getSchedule);
+router.put('/schedule', authorizePermission('notifications', 'edit'), notificationController.saveSchedule);
 
 // Lista de cultos próximos con roles asignados
-router.get('/upcoming-cultos', authorize('Administrador', 'Secretaría'), notificationController.getUpcomingCultos);
+router.get('/upcoming-cultos', authorizePermission('notifications', 'view'), notificationController.getUpcomingCultos);
 
-// Envío manual de recordatorios
-router.post('/send-reminders', authorize('Administrador', 'Secretaría'), notificationController.sendReminders);
+// Envío manual de recordatorios — requiere editar notificaciones
+router.post('/send-reminders', authorizePermission('notifications', 'edit'), notificationController.sendReminders);
 
 // Envío manual para un culto específico (botón "Enviar" por evento)
-router.post('/send/:eventId', authorize('Administrador', 'Secretaría'), notificationController.sendForEvent);
+router.post('/send/:eventId', authorizePermission('notifications', 'edit'), notificationController.sendForEvent);
 
 module.exports = router;

@@ -34,7 +34,7 @@ import {
 // Recibe churchId y churchName del ChurchSelector
 // ========================================================
 const WeeklyAttendanceContent = ({ churchId, churchName, backButton }) => {
-  const { hasRole } = useAuth();
+  const { hasPermission } = useAuth();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
@@ -158,7 +158,7 @@ const WeeklyAttendanceContent = ({ churchId, churchName, backButton }) => {
         <Typography variant="h5" fontWeight={700}>
           {churchName ? `Asistencia Semanal — ${churchName}` : 'Asistencia Semanal'}
         </Typography>
-        {hasRole('Administrador', 'Secretaría', 'Líder') && (
+        {hasPermission('weekly_attendance', 'create') && (
           <Button variant="contained" startIcon={<AddIcon />} onClick={openNew}>
             Registrar Semana
           </Button>
@@ -262,12 +262,12 @@ const WeeklyAttendanceContent = ({ churchId, churchName, backButton }) => {
                     {r.creator?.full_name || '-'}
                   </TableCell>
                   <TableCell align="right">
-                    {hasRole('Administrador', 'Secretaría') && (
+                    {hasPermission('weekly_attendance', 'edit') && (
                       <IconButton size="small" onClick={() => openEdit(r)} color="primary" title="Editar">
                         <EditIcon fontSize="small" />
                       </IconButton>
                     )}
-                    {hasRole('Administrador') && (
+                    {hasPermission('weekly_attendance', 'delete') && (
                       <IconButton size="small" onClick={() => handleDelete(r.id)} color="error" title="Eliminar">
                         <DeleteIcon fontSize="small" />
                       </IconButton>

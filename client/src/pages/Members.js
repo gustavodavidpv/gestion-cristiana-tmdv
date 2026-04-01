@@ -58,7 +58,7 @@ const emptyForm = {
  * Recibe churchId y churchName del ChurchSelector (null si no es SuperAdmin).
  */
 const MembersContent = ({ churchId, churchName, backButton }) => {
-  const { hasRole } = useAuth();
+  const { hasPermission } = useAuth();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [members, setMembers] = useState([]);
@@ -256,7 +256,7 @@ const MembersContent = ({ churchId, churchName, backButton }) => {
         <Typography variant="h5" fontWeight={700}>
           Miembros{churchName ? ` — ${churchName}` : ''}
         </Typography>
-        {hasRole('Administrador', 'Secretaría', 'Líder') && (
+        {hasPermission('members', 'create') && (
           <Button variant="contained" startIcon={<AddIcon />} onClick={openNew}>Nuevo Miembro</Button>
         )}
       </Box>
@@ -330,10 +330,10 @@ const MembersContent = ({ churchId, churchName, backButton }) => {
                   )}
                 </Box>
                 <Box sx={{ display: 'flex', gap: 0.5 }}>
-                  {hasRole('Administrador', 'Secretaría', 'Líder') && (
+                  {hasPermission('members', 'edit') && (
                     <IconButton size="small" onClick={() => openEdit(m)} color="primary"><EditIcon fontSize="small" /></IconButton>
                   )}
-                  {hasRole('Administrador') && (
+                  {hasPermission('members', 'delete') && (
                     <IconButton size="small" onClick={() => handleDelete(m.id)} color="error"><DeleteIcon fontSize="small" /></IconButton>
                   )}
                 </Box>
@@ -387,10 +387,10 @@ const MembersContent = ({ churchId, churchName, backButton }) => {
                   <TableCell>{m.baptized ? '✅' : '❌'}</TableCell>
                   <TableCell>{m.phone || '-'}</TableCell>
                   <TableCell align="right">
-                    {hasRole('Administrador', 'Secretaría', 'Líder') && (
+                    {hasPermission('members', 'edit') && (
                       <IconButton size="small" onClick={() => openEdit(m)} color="primary"><EditIcon fontSize="small" /></IconButton>
                     )}
-                    {hasRole('Administrador') && (
+                    {hasPermission('members', 'delete') && (
                       <IconButton size="small" onClick={() => handleDelete(m.id)} color="error"><DeleteIcon fontSize="small" /></IconButton>
                     )}
                   </TableCell>

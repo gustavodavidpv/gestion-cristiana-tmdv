@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const { User, Role, Church } = require('../models');
+const { User, Role, Church, RolePermission } = require('../models');
+const { MODULES, DEFAULTS } = require('../config/permissions');
 
 const generateToken = (user) => {
   return jwt.sign(
@@ -207,6 +208,62 @@ const authController = {
       res.json({ message: `Contraseña de ${user.full_name} restablecida exitosamente.` });
     } catch (error) {
       res.status(500).json({ message: 'Error al restablecer contraseña.', error: error.message });
+    }
+  },
+
+  /**
+   * GET /api/auth/my-permissions
+   * Retorna los permisos del usuario autenticado.
+   * SuperAdmin: genera permisos "todo permitido" sin consultar DB.
+   * Otros roles: consulta role_permissions, con fallback a DEFAULTS.
+   */
+  async getMyPermissions(req, res) {
+    try {
+      const user = req.user;
+      const permissions = {};
+
+      if (user.role.name === 'SuperAdmin') {
+        // SuperAdmin: generar todos los permisos como true
+        for (const mod of MODULES) {
+          permissions[mod.key] = {};
+          for (const action of mod.actions) {
+            permissions[mod.key][action] = true;
+          }
+        }
+      } else {
+        // Consultar permisos de DB para el rol del usuario
+        const dbPerms = await RolePermission.findAll({
+          where: { role_id: user.role_id },
+          attributes: ['module', 'action', 'allowed'],
+          raw: true,
+        });
+
+        // Construir mapa de permisos de DB
+        const dbMap = {};
+        for (const p of dbPerms) {
+          if (!dbMap[p.module]) dbMap[p.module] = {};
+          dbMap[p.module][p.action] = p.allowed;
+        }
+
+        // Defaults del rol como fallback
+        const roleDefaults = DEFAULTS[user.role.name] || {};
+
+        // Combinar: DB tiene prioridad, fallback a defaults
+        for (const mod of MODULES) {
+          permissions[mod.key] = {};
+          for (const action of mod.actions) {
+            const dbValue = dbMap[mod.key]?.[action];
+            permissions[mod.key][action] = dbValue !== undefined
+              ? dbValue
+              : (roleDefaults[mod.key]?.[action] ?? false);
+          }
+        }
+      }
+
+      res.json({ permissions });
+    } catch (error) {
+      console.error('Error al obtener permisos del usuario:', error);
+      res.status(500).json({ message: 'Error al obtener permisos.', error: error.message });
     }
   },
 };

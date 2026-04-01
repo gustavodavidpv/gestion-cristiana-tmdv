@@ -1,28 +1,28 @@
 const express = require('express');
 const router = express.Router();
 const churchController = require('../controllers/churchController');
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate, authorize, authorizePermission } = require('../middleware/auth');
 
 router.use(authenticate);
 
-// Iglesias
-router.get('/', churchController.getAll);
+// Iglesias — view controlado por permisos dinámicos
+router.get('/', authorizePermission('churches', 'view'), churchController.getAll);
 // Estadísticas del dashboard para SuperAdmin (DEBE ir ANTES de /:id)
 router.get('/stats/dashboard', authorize('SuperAdmin'), churchController.getDashboardStats);
-router.get('/:id', churchController.getById);
-// Solo SuperAdmin puede CREAR y ELIMINAR iglesias (authorize bypasses SuperAdmin)
+router.get('/:id', authorizePermission('churches', 'view'), churchController.getById);
+// Solo SuperAdmin puede CREAR y ELIMINAR iglesias (no delegable)
 router.post('/', authorize('SuperAdmin'), churchController.create);
-router.put('/:id', authorize('Administrador'), churchController.update);
+router.put('/:id', authorizePermission('churches', 'edit'), churchController.update);
 router.delete('/:id', authorize('SuperAdmin'), churchController.delete);
 
-// Misiones
-router.post('/:id/missions', authorize('Administrador', 'Secretaría'), churchController.createMission);
-router.put('/:id/missions/:missionId', authorize('Administrador', 'Secretaría'), churchController.updateMission);
-router.delete('/:id/missions/:missionId', authorize('Administrador'), churchController.deleteMission);
+// Misiones — edit de iglesias permite gestionar misiones
+router.post('/:id/missions', authorizePermission('churches', 'edit'), churchController.createMission);
+router.put('/:id/missions/:missionId', authorizePermission('churches', 'edit'), churchController.updateMission);
+router.delete('/:id/missions/:missionId', authorizePermission('churches', 'delete'), churchController.deleteMission);
 
-// Campos Blancos
-router.post('/:id/white-fields', authorize('Administrador', 'Secretaría'), churchController.createWhiteField);
-router.put('/:id/white-fields/:fieldId', authorize('Administrador', 'Secretaría'), churchController.updateWhiteField);
-router.delete('/:id/white-fields/:fieldId', authorize('Administrador'), churchController.deleteWhiteField);
+// Campos Blancos — edit de iglesias permite gestionar campos blancos
+router.post('/:id/white-fields', authorizePermission('churches', 'edit'), churchController.createWhiteField);
+router.put('/:id/white-fields/:fieldId', authorizePermission('churches', 'edit'), churchController.updateWhiteField);
+router.delete('/:id/white-fields/:fieldId', authorizePermission('churches', 'delete'), churchController.deleteWhiteField);
 
 module.exports = router;

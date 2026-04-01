@@ -44,7 +44,7 @@ import {
 } from '@mui/icons-material';
 
 const Churches = () => {
-  const { user, hasRole, isSuperAdmin } = useAuth();
+  const { user, hasPermission, isSuperAdmin } = useAuth();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
@@ -634,7 +634,7 @@ const Churches = () => {
       <Paper sx={{ p: 3, mb: 3 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
           <Typography variant="h6">Misiones</Typography>
-          {hasRole('Administrador', 'Secretaría') && (
+          {hasPermission('churches', 'edit') && (
             <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={openNewMission}>
               Agregar
             </Button>
@@ -646,12 +646,12 @@ const Churches = () => {
             <ListItem key={m.id}
               secondaryAction={
                 <Box>
-                  {hasRole('Administrador', 'Secretaría') && (
+                  {hasPermission('churches', 'edit') && (
                     <IconButton edge="end" size="small" onClick={() => openEditMission(m)} color="primary" title="Editar">
                       <EditIcon fontSize="small" />
                     </IconButton>
                   )}
-                  {hasRole('Administrador') && (
+                  {hasPermission('churches', 'delete') && (
                     <IconButton edge="end" size="small" onClick={() => deleteMission(m.id)} color="error" title="Eliminar" sx={{ ml: 0.5 }}>
                       <DeleteIcon fontSize="small" />
                     </IconButton>
@@ -690,7 +690,7 @@ const Churches = () => {
       <Paper sx={{ p: 3 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
           <Typography variant="h6">Campos Blancos</Typography>
-          {hasRole('Administrador', 'Secretaría') && (
+          {hasPermission('churches', 'edit') && (
             <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={openNewWf}>
               Agregar
             </Button>
@@ -702,12 +702,12 @@ const Churches = () => {
             <ListItem key={wf.id}
               secondaryAction={
                 <Box>
-                  {hasRole('Administrador', 'Secretaría') && (
+                  {hasPermission('churches', 'edit') && (
                     <IconButton edge="end" size="small" onClick={() => openEditWf(wf)} color="primary" title="Editar">
                       <EditIcon fontSize="small" />
                     </IconButton>
                   )}
-                  {hasRole('Administrador') && (
+                  {hasPermission('churches', 'delete') && (
                     <IconButton edge="end" size="small" onClick={() => deleteWhiteField(wf.id)} color="error" title="Eliminar" sx={{ ml: 0.5 }}>
                       <DeleteIcon fontSize="small" />
                     </IconButton>

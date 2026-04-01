@@ -20,7 +20,7 @@ import {
 } from '@mui/icons-material';
 
 const MinisterialPositions = () => {
-  const { hasRole, isSuperAdmin } = useAuth();
+  const { hasPermission, isSuperAdmin } = useAuth();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [positions, setPositions] = useState([]);
@@ -90,7 +90,7 @@ const MinisterialPositions = () => {
           <BadgeIcon color="primary" />
           <Typography variant="h5" fontWeight={700}>Cargos Ministeriales</Typography>
         </Box>
-        {hasRole('Administrador') && (
+        {hasPermission('positions', 'create') && (
           <Button variant="contained" startIcon={<AddIcon />} onClick={openNew}>Nuevo Cargo</Button>
         )}
       </Box>
@@ -121,7 +121,7 @@ const MinisterialPositions = () => {
               </Box>
               <Box sx={{ display: 'flex', gap: 0.5, mt: 1, justifyContent: 'flex-end' }}>
                 <IconButton size="small" onClick={() => openEdit(pos)} color="primary"><EditIcon fontSize="small" /></IconButton>
-                {hasRole('Administrador') && (
+                {hasPermission('positions', 'delete') && (
                   <IconButton size="small" onClick={() => handleDelete(pos.id)} color="error"><DeleteIcon fontSize="small" /></IconButton>
                 )}
               </Box>
@@ -168,7 +168,7 @@ const MinisterialPositions = () => {
                     <IconButton size="small" onClick={() => openEdit(pos)} color="primary" title="Editar">
                       <EditIcon fontSize="small" />
                     </IconButton>
-                    {hasRole('Administrador') && (
+                    {hasPermission('positions', 'delete') && (
                       <IconButton size="small" onClick={() => handleDelete(pos.id)} color="error" title="Eliminar">
                         <DeleteIcon fontSize="small" />
                       </IconButton>

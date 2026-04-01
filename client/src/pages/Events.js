@@ -204,7 +204,7 @@ function expandEventToDays(ev, year, month) {
  * Recibe churchId y churchName del ChurchSelector (null si no es SuperAdmin).
  */
 const EventsContent = ({ churchId, churchName, backButton }) => {
-  const { hasRole } = useAuth();
+  const { hasPermission } = useAuth();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [events, setEvents] = useState([]);
@@ -730,7 +730,7 @@ const EventsContent = ({ churchId, churchName, backButton }) => {
             color="warning" size="small">
             Ventas PDF
           </Button>
-          {hasRole('Administrador', 'Secretaría', 'Líder') && (
+          {hasPermission('events', 'create') && (
             <Button variant="contained" startIcon={<AddIcon />} onClick={openNew}>Nuevo Evento</Button>
           )}
         </Box>
@@ -1009,17 +1009,17 @@ const EventsContent = ({ churchId, churchName, backButton }) => {
                           <Box sx={{ display: 'flex', gap: 0 }}
                             onClick={(e) => e.stopPropagation()} /* Evitar que el click en acciones abra editar */
                           >
-                            {hasRole('Administrador', 'Secretaría', 'Líder') && (
-                              <>
-                                <IconButton size="small" onClick={() => openAttendees(ev)} color="success" title="Asistentes">
-                                  <PeopleIcon fontSize="small" />
-                                </IconButton>
-                                <IconButton size="small" onClick={() => openEdit(ev)} color="primary" title="Editar">
-                                  <EditIcon fontSize="small" />
-                                </IconButton>
-                              </>
+                            {hasPermission('events', 'attendance') && (
+                              <IconButton size="small" onClick={() => openAttendees(ev)} color="success" title="Asistentes">
+                                <PeopleIcon fontSize="small" />
+                              </IconButton>
                             )}
-                            {hasRole('Administrador') && (
+                            {hasPermission('events', 'edit') && (
+                              <IconButton size="small" onClick={() => openEdit(ev)} color="primary" title="Editar">
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            )}
+                            {hasPermission('events', 'delete') && (
                               <IconButton size="small" onClick={() => handleDelete(ev.id)} color="error" title="Eliminar">
                                 <DeleteIcon fontSize="small" />
                               </IconButton>
@@ -1097,17 +1097,17 @@ const EventsContent = ({ churchId, churchName, backButton }) => {
                     <Chip label={ev.faith_decisions} size="small" color="error" variant={ev.faith_decisions > 0 ? 'filled' : 'outlined'} />
                   </TableCell>
                   <TableCell align="right">
-                    {hasRole('Administrador', 'Secretaría', 'Líder') && (
-                      <>
-                        <IconButton size="small" onClick={() => openAttendees(ev)} color="success" title="Gestionar asistentes">
-                          <PeopleIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton size="small" onClick={() => openEdit(ev)} color="primary" title="Editar">
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                      </>
+                    {hasPermission('events', 'attendance') && (
+                      <IconButton size="small" onClick={() => openAttendees(ev)} color="success" title="Gestionar asistentes">
+                        <PeopleIcon fontSize="small" />
+                      </IconButton>
                     )}
-                    {hasRole('Administrador') && (
+                    {hasPermission('events', 'edit') && (
+                      <IconButton size="small" onClick={() => openEdit(ev)} color="primary" title="Editar">
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    )}
+                    {hasPermission('events', 'delete') && (
                       <IconButton size="small" onClick={() => handleDelete(ev.id)} color="error" title="Eliminar">
                         <DeleteIcon fontSize="small" />
                       </IconButton>

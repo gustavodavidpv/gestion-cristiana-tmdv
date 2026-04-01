@@ -4,7 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const minuteController = require('../controllers/minuteController');
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate, authorizePermission } = require('../middleware/auth');
 
 // Asegurar que el directorio de uploads exista
 const uploadsDir = path.join(__dirname, '..', 'public', 'uploads', 'minutes');
@@ -44,15 +44,15 @@ router.use(authenticate);
 router.get('/', minuteController.getAll);
 router.get('/:id', minuteController.getById);
 
-// Crear/editar actas: Administrador, Secretaría
-router.post('/', authorize('Administrador', 'Secretaría'), minuteController.create);
-router.put('/:id', authorize('Administrador', 'Secretaría'), minuteController.update);
-router.delete('/:id', authorize('Administrador'), minuteController.delete);
+// Crear/editar actas: controlado por permisos dinámicos
+router.post('/', authorizePermission('minutes', 'create'), minuteController.create);
+router.put('/:id', authorizePermission('minutes', 'edit'), minuteController.update);
+router.delete('/:id', authorizePermission('minutes', 'delete'), minuteController.delete);
 
 // Subir archivo(s) de acta — multer .array() para multi-file (máx 5)
-router.post('/:id/upload', authorize('Administrador', 'Secretaría'), upload.array('files', 5), minuteController.uploadFiles);
+router.post('/:id/upload', authorizePermission('minutes', 'edit'), upload.array('files', 5), minuteController.uploadFiles);
 
 // Eliminar un archivo específico de una acta
-router.delete('/:id/files/:fileId', authorize('Administrador', 'Secretaría'), minuteController.deleteFile);
+router.delete('/:id/files/:fileId', authorizePermission('minutes', 'delete'), minuteController.deleteFile);
 
 module.exports = router;

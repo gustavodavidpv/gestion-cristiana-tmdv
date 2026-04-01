@@ -12,7 +12,17 @@
       "Bash(node -e \"const fs=require\\(''fs''\\);const c=fs.readFileSync\\(''src/pages/Events.js'',''utf8''\\);let b=0,p=0,s=0;for\\(const ch of c\\){if\\(ch===''{''\\)b++;if\\(ch===''}''\\)b--;if\\(ch===''\\(''\\)p++;if\\(ch===''\\)''\\)p--;if\\(ch===''[''\\)s++;if\\(ch==='']''\\)s--;}console.log\\(''braces:'',b,''parens:'',p,''brackets:'',s\\);\")",
       "Bash(node -c server/controllers/brandingController.js)",
       "Bash(node -c server/controllers/memberController.js)",
-      "Bash(npx eslint:*)"
+      "Bash(npx eslint:*)",
+      "Bash(node -c server/routes/minutes.js)",
+      "Bash(node -c server/routes/churches.js)",
+      "Bash(node -c server/routes/notifications.js)",
+      "Bash(node -c server/routes/ministerialPositions.js)",
+      "Bash(node -c server/routes/branding.js)",
+      "Bash(node -c server/config/permissions.js)",
+      "Bash(node -c server/models/RolePermission.js)",
+      "Bash(node -c server/controllers/permissionController.js)",
+      "Bash(node -c server/routes/permissions.js)",
+      "Bash(node -c server/middleware/auth.js)"
     ]
   }
 }

@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
-const { User, Role } = require('../models');
+const { User, Role, RolePermission } = require('../models');
+const { DEFAULTS } = require('../config/permissions');
 
 /**
  * Middleware: Verificar token JWT
@@ -21,6 +22,25 @@ const authenticate = async (req, res, next) => {
 
     if (!user || !user.is_active) {
       return res.status(401).json({ message: 'Usuario no encontrado o inactivo.' });
+    }
+
+    // Precargar permisos dinámicos para no-SuperAdmin (evita queries extra en authorizePermission)
+    if (user.role.name !== 'SuperAdmin') {
+      try {
+        const perms = await RolePermission.findAll({
+          where: { role_id: user.role_id },
+          attributes: ['module', 'action', 'allowed'],
+          raw: true,
+        });
+        user._permissions = {};
+        for (const p of perms) {
+          if (!user._permissions[p.module]) user._permissions[p.module] = {};
+          user._permissions[p.module][p.action] = p.allowed;
+        }
+      } catch {
+        // Si falla la carga de permisos, se usarán DEFAULTS en authorizePermission
+        user._permissions = {};
+      }
     }
 
     req.user = user;
@@ -119,4 +139,43 @@ const applyTenantFilter = (where, user) => {
   return where;
 };
 
-module.exports = { authenticate, authorize, belongsToChurch, isSuperAdmin, applyTenantFilter };
+/**
+ * Middleware: Verificar permiso dinámico por módulo y acción.
+ * Usa los permisos precargados en authenticate() (_permissions).
+ * Si no hay permisos en DB, usa DEFAULTS del config.
+ * SuperAdmin SIEMPRE tiene acceso (bypass automático).
+ *
+ * @param {string} module - Clave del módulo (ej: 'members', 'events')
+ * @param {string} action - Acción requerida (ej: 'view', 'create', 'edit', 'delete', 'attendance')
+ */
+const authorizePermission = (module, action) => {
+  return (req, res, next) => {
+    if (!req.user || !req.user.role) {
+      return res.status(403).json({ message: 'Acceso denegado.' });
+    }
+
+    // SuperAdmin siempre tiene acceso a todo
+    if (req.user.role.name === 'SuperAdmin') {
+      return next();
+    }
+
+    // Chequear permisos dinámicos (precargados en authenticate)
+    const perms = req.user._permissions || {};
+    const allowed = perms[module]?.[action];
+
+    if (allowed !== undefined) {
+      // Hay permiso en DB: usar ese valor
+      if (allowed) return next();
+    } else {
+      // No hay permiso en DB: fallback a DEFAULTS
+      const roleDefaults = DEFAULTS[req.user.role.name];
+      if (roleDefaults?.[module]?.[action]) return next();
+    }
+
+    return res.status(403).json({
+      message: `Acceso denegado. Permiso requerido: ${module}.${action}.`,
+    });
+  };
+};
+
+module.exports = { authenticate, authorize, authorizePermission, belongsToChurch, isSuperAdmin, applyTenantFilter };

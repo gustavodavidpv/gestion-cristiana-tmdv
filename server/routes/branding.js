@@ -4,7 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const brandingController = require('../controllers/brandingController');
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate, authorizePermission } = require('../middleware/auth');
 
 // Asegurar directorio de logos
 const logosDir = path.join(__dirname, '..', 'public', 'uploads', 'logos');
@@ -36,10 +36,10 @@ const upload = multer({
 // Ruta pública: obtener branding de una iglesia (para Login)
 router.get('/:churchId', brandingController.getBranding);
 
-// Rutas protegidas
-router.get('/', authenticate, authorize('Administrador'), brandingController.getAllBranding);
-router.put('/:churchId', authenticate, authorize('Administrador'), brandingController.updateBranding);
-router.post('/:churchId/logo', authenticate, authorize('Administrador'), upload.single('logo'), brandingController.uploadLogo);
-router.delete('/:churchId/logo', authenticate, authorize('Administrador'), brandingController.deleteLogo);
+// Rutas protegidas — controlado por permisos dinámicos
+router.get('/', authenticate, authorizePermission('branding', 'view'), brandingController.getAllBranding);
+router.put('/:churchId', authenticate, authorizePermission('branding', 'edit'), brandingController.updateBranding);
+router.post('/:churchId/logo', authenticate, authorizePermission('branding', 'edit'), upload.single('logo'), brandingController.uploadLogo);
+router.delete('/:churchId/logo', authenticate, authorizePermission('branding', 'delete'), brandingController.deleteLogo);
 
 module.exports = router;

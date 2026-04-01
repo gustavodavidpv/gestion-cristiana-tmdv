@@ -15,6 +15,7 @@ const MotionVoter = require('./MotionVoter');
 const MinisterialPosition = require('./MinisterialPosition');
 const MemberPosition = require('./MemberPosition');
 const MinuteFile = require('./MinuteFile');
+const RolePermission = require('./RolePermission');
 
 // =============================================
 // ASOCIACIONES
@@ -150,6 +151,14 @@ MemberPosition.belongsTo(MinisterialPosition, { foreignKey: 'position_id' });
 Member.hasMany(MemberPosition, { foreignKey: 'member_id', as: 'member_positions' });
 MinisterialPosition.hasMany(MemberPosition, { foreignKey: 'position_id' });
 
+// =============================================
+// PERMISOS DINÁMICOS POR ROL (NUEVO)
+// Cada rol tiene N permisos (module+action → allowed)
+// SuperAdmin no tiene filas — siempre tiene acceso total
+// =============================================
+Role.hasMany(RolePermission, { foreignKey: 'role_id', as: 'permissions' });
+RolePermission.belongsTo(Role, { foreignKey: 'role_id', as: 'role' });
+
 module.exports = {
   sequelize,
   Role,
@@ -168,4 +177,5 @@ module.exports = {
   MinisterialPosition,
   MemberPosition,
   MinuteFile,
+  RolePermission,
 };

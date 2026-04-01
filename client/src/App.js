@@ -27,14 +27,20 @@ import WeeklyAttendance from './pages/WeeklyAttendance';
 import MinisterialPositions from './pages/MinisterialPositions';
 import Branding from './pages/Branding';
 import Notifications from './pages/Notifications';
+import Permissions from './pages/Permissions';
 
 const DRAWER_WIDTH = 260;
 
-const ProtectedRoute = ({ children, roles }) => {
-  const { user, loading, hasRole } = useAuth();
+/**
+ * ProtectedRoute - Protege rutas por permisos de módulo.
+ * Usa canViewModule(module) para verificar acceso.
+ * Si no hay module, cualquier usuario autenticado puede acceder.
+ */
+const ProtectedRoute = ({ children, module }) => {
+  const { user, loading, canViewModule } = useAuth();
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}><CircularProgress /></Box>;
   if (!user) return <Navigate to="/login" />;
-  if (roles && !roles.some((r) => hasRole(r))) return <Navigate to="/dashboard" />;
+  if (module && !canViewModule(module)) return <Navigate to="/dashboard" />;
   return children;
 };
 
@@ -82,31 +88,35 @@ function App() {
           <Routes>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/members" element={
-              <ProtectedRoute roles={['Administrador', 'Secretaría', 'Líder', 'Visitante']}><Members /></ProtectedRoute>
+              <ProtectedRoute module="members"><Members /></ProtectedRoute>
             } />
             <Route path="/churches" element={
-              <ProtectedRoute roles={['Administrador', 'Secretaría']}><Churches /></ProtectedRoute>
+              <ProtectedRoute module="churches"><Churches /></ProtectedRoute>
             } />
             <Route path="/events" element={
-              <ProtectedRoute roles={['Administrador', 'Secretaría', 'Líder']}><Events /></ProtectedRoute>
+              <ProtectedRoute module="events"><Events /></ProtectedRoute>
             } />
             <Route path="/attendance" element={
-              <ProtectedRoute roles={['Administrador', 'Secretaría', 'Líder']}><WeeklyAttendance /></ProtectedRoute>
+              <ProtectedRoute module="weekly_attendance"><WeeklyAttendance /></ProtectedRoute>
             } />
             <Route path="/minutes" element={
-              <ProtectedRoute roles={['Administrador', 'Secretaría']}><Minutes /></ProtectedRoute>
+              <ProtectedRoute module="minutes"><Minutes /></ProtectedRoute>
             } />
             <Route path="/positions" element={
-              <ProtectedRoute roles={['Administrador']}><MinisterialPositions /></ProtectedRoute>
+              <ProtectedRoute module="positions"><MinisterialPositions /></ProtectedRoute>
             } />
             <Route path="/branding" element={
-              <ProtectedRoute roles={['Administrador']}><Branding /></ProtectedRoute>
+              <ProtectedRoute module="branding"><Branding /></ProtectedRoute>
             } />
             <Route path="/notifications" element={
-              <ProtectedRoute roles={['Administrador', 'Secretaría']}><Notifications /></ProtectedRoute>
+              <ProtectedRoute module="notifications"><Notifications /></ProtectedRoute>
             } />
             <Route path="/users" element={
-              <ProtectedRoute roles={['Administrador']}><Users /></ProtectedRoute>
+              <ProtectedRoute module="users"><Users /></ProtectedRoute>
+            } />
+            {/* Permisos: solo SuperAdmin (no tiene módulo en DB → canViewModule retorna false para otros) */}
+            <Route path="/permissions" element={
+              <ProtectedRoute module="permissions"><Permissions /></ProtectedRoute>
             } />
             <Route path="/" element={<Navigate to="/dashboard" />} />
             <Route path="*" element={<Navigate to="/dashboard" />} />

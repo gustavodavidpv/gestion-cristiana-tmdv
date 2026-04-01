@@ -1,26 +1,26 @@
 const express = require('express');
 const router = express.Router();
 const eventController = require('../controllers/eventController');
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate, authorizePermission } = require('../middleware/auth');
 
 router.use(authenticate);
 
-router.get('/', eventController.getAll);
+router.get('/', authorizePermission('events', 'view'), eventController.getAll);
 
 // Calendario PDF mensual (DEBE ir ANTES de /:id para evitar conflicto de rutas)
-router.get('/calendar-pdf', eventController.generateCalendar);
+router.get('/calendar-pdf', authorizePermission('events', 'view'), eventController.generateCalendar);
 
 // Calendario de Ventas PDF anual (DEBE ir ANTES de /:id)
-router.get('/sales-calendar-pdf', eventController.generateSalesCalendar);
+router.get('/sales-calendar-pdf', authorizePermission('events', 'view'), eventController.generateSalesCalendar);
 
-router.get('/:id', eventController.getById);
+router.get('/:id', authorizePermission('events', 'view'), eventController.getById);
 
-// Crear eventos: Administrador, Secretaría, Líder
-router.post('/', authorize('Administrador', 'Secretaría', 'Líder'), eventController.create);
-router.put('/:id', authorize('Administrador', 'Secretaría', 'Líder'), eventController.update);
-router.delete('/:id', authorize('Administrador'), eventController.delete);
+// Crear eventos: controlado por permisos dinámicos
+router.post('/', authorizePermission('events', 'create'), eventController.create);
+router.put('/:id', authorizePermission('events', 'edit'), eventController.update);
+router.delete('/:id', authorizePermission('events', 'delete'), eventController.delete);
 
-// Asistentes
-router.post('/:id/attendees', authorize('Administrador', 'Secretaría', 'Líder'), eventController.addAttendees);
+// Asistentes: permiso especial 'attendance'
+router.post('/:id/attendees', authorizePermission('events', 'attendance'), eventController.addAttendees);
 
 module.exports = router;

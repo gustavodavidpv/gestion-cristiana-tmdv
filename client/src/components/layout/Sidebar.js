@@ -24,22 +24,27 @@ import {
   Badge as BadgeIcon,
   Palette as PaletteIcon,
   WhatsApp as WhatsAppIcon,
+  Security as SecurityIcon,
 } from '@mui/icons-material';
 
-/** Definición de menú con roles permitidos.
- *  SuperAdmin ve todo (hasRole retorna true automáticamente).
+/**
+ * Definición de menú con permisos dinámicos por módulo.
+ * 'module': clave del módulo para verificar permiso de 'view'.
+ * 'superAdminOnly': solo visible para SuperAdmin (ej: Permisos).
+ * SuperAdmin ve todo (canViewModule retorna true automáticamente).
  */
 const menuItems = [
-  { path: '/dashboard', icon: <DashboardIcon />, label: 'Dashboard', roles: ['Administrador', 'Secretaría', 'Líder', 'Visitante'] },
-  { path: '/members', icon: <PeopleIcon />, label: 'Miembros', roles: ['Administrador', 'Secretaría', 'Líder', 'Visitante'] },
-  { path: '/churches', icon: <ChurchIcon />, label: 'Iglesias', roles: ['Administrador', 'Secretaría'] },
-  { path: '/events', icon: <EventIcon />, label: 'Eventos', roles: ['Administrador', 'Secretaría', 'Líder'] },
-  { path: '/attendance', icon: <GroupsIcon />, label: 'Asistencia', roles: ['Administrador', 'Secretaría', 'Líder'] },
-  { path: '/minutes', icon: <DescriptionIcon />, label: 'Actas', roles: ['Administrador', 'Secretaría'] },
-  { path: '/notifications', icon: <WhatsAppIcon />, label: 'Notificaciones', roles: ['Administrador', 'Secretaría'] },
-  { path: '/positions', icon: <BadgeIcon />, label: 'Cargos', roles: ['Administrador'] },
-  { path: '/branding', icon: <PaletteIcon />, label: 'Branding', roles: ['Administrador'] },
-  { path: '/users', icon: <AdminIcon />, label: 'Usuarios', roles: ['Administrador'] },
+  { path: '/dashboard', icon: <DashboardIcon />, label: 'Dashboard', module: 'dashboard' },
+  { path: '/members', icon: <PeopleIcon />, label: 'Miembros', module: 'members' },
+  { path: '/churches', icon: <ChurchIcon />, label: 'Iglesias', module: 'churches' },
+  { path: '/events', icon: <EventIcon />, label: 'Eventos', module: 'events' },
+  { path: '/attendance', icon: <GroupsIcon />, label: 'Asistencia', module: 'weekly_attendance' },
+  { path: '/minutes', icon: <DescriptionIcon />, label: 'Actas', module: 'minutes' },
+  { path: '/notifications', icon: <WhatsAppIcon />, label: 'Notificaciones', module: 'notifications' },
+  { path: '/positions', icon: <BadgeIcon />, label: 'Cargos', module: 'positions' },
+  { path: '/branding', icon: <PaletteIcon />, label: 'Branding', module: 'branding' },
+  { path: '/users', icon: <AdminIcon />, label: 'Usuarios', module: 'users' },
+  { path: '/permissions', icon: <SecurityIcon />, label: 'Permisos', superAdminOnly: true },
 ];
 
 /**
@@ -57,13 +62,14 @@ const getFileUrl = (path) => {
 };
 
 const Sidebar = ({ drawerWidth, mobileOpen, onClose, isMobile }) => {
-  const { user, hasRole } = useAuth();
+  const { user, canViewModule, isSuperAdmin } = useAuth();
   const location = useLocation();
 
-  // Filtrar items de menú según rol del usuario
-  const visibleItems = menuItems.filter((item) =>
-    item.roles.some((role) => hasRole(role))
-  );
+  // Filtrar items de menú según permisos dinámicos del usuario
+  const visibleItems = menuItems.filter((item) => {
+    if (item.superAdminOnly) return isSuperAdmin();
+    return canViewModule(item.module);
+  });
 
   const drawerContent = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>

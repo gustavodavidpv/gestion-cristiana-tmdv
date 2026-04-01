@@ -78,7 +78,7 @@ const Login = () => {
         if (data.branding) {
           setBranding({
             title: data.branding.login_title || data.branding.name || 'Gestión Cristiana',
-            subtitle: 'TMDV',
+            subtitle: data.branding.initials || 'TMDV',
             logoUrl: data.branding.login_logo_url || null,
             initials: data.branding.initials || null,
           });

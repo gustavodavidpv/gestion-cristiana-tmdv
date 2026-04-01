@@ -59,7 +59,7 @@ const formatFileSize = (bytes) => {
 };
 
 const Minutes = () => {
-  const { hasRole } = useAuth();
+  const { hasPermission } = useAuth();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [minutes, setMinutes] = useState([]);
@@ -259,7 +259,7 @@ const Minutes = () => {
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h5" fontWeight={700}>Actas de Reuniones</Typography>
-        {hasRole('Administrador', 'Secretaría') && (
+        {hasPermission('minutes', 'create') && (
           <Button variant="contained" startIcon={<AddIcon />} onClick={openNew}>Nueva Acta</Button>
         )}
       </Box>
@@ -285,7 +285,7 @@ const Minutes = () => {
               </Box>
               <Box sx={{ display: 'flex', gap: 0.5, mt: 1, justifyContent: 'flex-end' }}>
                 <IconButton size="small" onClick={() => viewDetail(m.id)} color="primary"><ViewIcon fontSize="small" /></IconButton>
-                {hasRole('Administrador') && (
+                {hasPermission('minutes', 'delete') && (
                   <IconButton size="small" onClick={() => handleDelete(m.id)} color="error"><DeleteIcon fontSize="small" /></IconButton>
                 )}
               </Box>
@@ -341,7 +341,7 @@ const Minutes = () => {
                       <IconButton size="small" onClick={() => viewDetail(m.id)} color="primary" title="Ver detalle">
                         <ViewIcon fontSize="small" />
                       </IconButton>
-                      {hasRole('Administrador') && (
+                      {hasPermission('minutes', 'delete') && (
                         <IconButton size="small" onClick={() => handleDelete(m.id)} color="error" title="Eliminar">
                           <DeleteIcon fontSize="small" />
                         </IconButton>
@@ -528,7 +528,7 @@ const Minutes = () => {
                           <DownloadIcon fontSize="small" />
                         </IconButton>
                         {/* Botón eliminar */}
-                        {hasRole('Administrador', 'Secretaría') && (
+                        {hasPermission('minutes', 'delete') && (
                           <IconButton size="small" color="error" title="Eliminar archivo"
                             onClick={() => handleDeleteFile(file.id, file.original_name)}>
                             <DeleteIcon fontSize="small" />
@@ -543,7 +543,7 @@ const Minutes = () => {
               )}
 
               {/* Botón de subir archivos (solo para roles autorizados) */}
-              {hasRole('Administrador', 'Secretaría') && (
+              {hasPermission('minutes', 'edit') && (
                 <Box>
                   {/* Barra de progreso durante subida */}
                   {uploading && (
