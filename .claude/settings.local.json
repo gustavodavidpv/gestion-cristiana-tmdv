@@ -22,7 +22,10 @@
       "Bash(node -c server/models/RolePermission.js)",
       "Bash(node -c server/controllers/permissionController.js)",
       "Bash(node -c server/routes/permissions.js)",
-      "Bash(node -c server/middleware/auth.js)"
+      "Bash(node -c server/middleware/auth.js)",
+      "Bash(node -c server/utils/panamaTime.js)",
+      "Bash(node -c server/utils/calendarPdf.js)",
+      "Bash(node -c server/utils/salesCalendarPdf.js)"
     ]
   }
 }

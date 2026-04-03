@@ -14,6 +14,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-toastify';
+import { toPanamaDate, toPanamaDatetimeStr, formatTimePanama, formatDatePanama, appendPanamaOffset } from '../utils/panamaTime';
 import ChurchSelector from '../components/layout/ChurchSelector';
 import {
   Box, Paper, Typography, Button, TextField, Select, MenuItem, FormControl,
@@ -96,28 +97,17 @@ function getCalendarGrid(year, month) {
 }
 
 /**
- * Formatea hora de un Date como HH:MM (24h).
- * @param {string|Date} date - Fecha/hora
- * @returns {string} Hora formateada
+ * Formatea hora en hora Panamá (UTC-5) como HH:MM (24h).
+ * Usa la utilidad centralizada para garantizar consistencia.
  */
-function formatTimeShort(date) {
-  const d = new Date(date);
-  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
-}
+const formatTimeShort = formatTimePanama;
 
 /**
  * Convierte un ISO timestamp a formato compatible con input datetime-local
- * respetando la zona horaria local del navegador.
- * Ej: "2026-03-29T00:00:00.000Z" → "2026-03-28T19:00" (en UTC-5)
- * @param {string} isoStr - Fecha ISO del servidor
- * @returns {string} Formato "YYYY-MM-DDTHH:MM" en hora local
+ * forzando hora de Panamá (UTC-5) sin importar el timezone del navegador.
+ * Ej: "2026-03-30T00:00:00.000Z" → "2026-03-29T19:00"
  */
-function toLocalDatetimeStr(isoStr) {
-  if (!isoStr) return '';
-  const d = new Date(isoStr);
-  const pad = (n) => n.toString().padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
+const toLocalDatetimeStr = toPanamaDatetimeStr;
 
 /**
  * Expande un evento en "ocurrencias" por día para la vista de calendario.
@@ -137,17 +127,18 @@ function toLocalDatetimeStr(isoStr) {
  * @returns {Array} Ocurrencias: { day, label, title, event_type, dayType, sortTime, event }
  */
 function expandEventToDays(ev, year, month) {
-  const start = new Date(ev.start_date);
-  const end = ev.end_date ? new Date(ev.end_date) : start;
+  // Usar toPanamaDate + getUTC*() para obtener componentes en hora Panamá
+  const startP = toPanamaDate(ev.start_date);
+  const endP = ev.end_date ? toPanamaDate(ev.end_date) : startP;
 
-  // Comparar solo fechas (sin hora) para determinar si es multi-día
-  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-  const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  // Comparar solo fechas (sin hora) en hora Panamá para determinar si es multi-día
+  const startDay = new Date(Date.UTC(startP.getUTCFullYear(), startP.getUTCMonth(), startP.getUTCDate()));
+  const endDay = new Date(Date.UTC(endP.getUTCFullYear(), endP.getUTCMonth(), endP.getUTCDate()));
   const isSameDay = startDay.getTime() === endDay.getTime();
 
   const occurrences = [];
-  const firstDayOfMonth = new Date(year, month - 1, 1);
-  const lastDayOfMonth = new Date(year, month, 0);
+  const firstDayOfMonth = new Date(Date.UTC(year, month - 1, 1));
+  const lastDayOfMonth = new Date(Date.UTC(year, month, 0));
 
   // Iterar desde el mayor entre startDay y el inicio del mes,
   // hasta el menor entre endDay y el fin del mes
@@ -155,25 +146,25 @@ function expandEventToDays(ev, year, month) {
   const limit = new Date(Math.min(endDay.getTime(), lastDayOfMonth.getTime()));
 
   while (current <= limit) {
-    const day = current.getDate();
+    const day = current.getUTCDate();
     const isFirstDay = current.getTime() === startDay.getTime();
     const isLastDay = current.getTime() === endDay.getTime();
 
     let label, dayType, sortTime;
 
     if (isSameDay) {
-      // Evento de un solo día: mostrar hora inicio-fin
-      const startT = formatTimeShort(start);
-      const endT = ev.end_date ? `-${formatTimeShort(end)}` : '';
+      // Evento de un solo día: mostrar hora inicio-fin (hora Panamá)
+      const startT = formatTimeShort(ev.start_date);
+      const endT = ev.end_date ? `-${formatTimeShort(ev.end_date)}` : '';
       label = `${startT}${endT}`;
       dayType = 'single';
-      sortTime = start.getHours() * 60 + start.getMinutes();
+      sortTime = startP.getUTCHours() * 60 + startP.getUTCMinutes();
     } else if (isFirstDay) {
-      label = `${formatTimeShort(start)} ▶`;
+      label = `${formatTimeShort(ev.start_date)} ▶`;
       dayType = 'start';
-      sortTime = start.getHours() * 60 + start.getMinutes();
+      sortTime = startP.getUTCHours() * 60 + startP.getUTCMinutes();
     } else if (isLastDay) {
-      label = `▶ ${formatTimeShort(end)}`;
+      label = `▶ ${formatTimeShort(ev.end_date)}`;
       dayType = 'end';
       sortTime = 0;
     } else {
@@ -192,8 +183,8 @@ function expandEventToDays(ev, year, month) {
       event: ev, // Referencia al evento completo para manejar clicks
     });
 
-    // Avanzar al siguiente día
-    current.setDate(current.getDate() + 1);
+    // Avanzar al siguiente día (usando UTC para consistencia)
+    current.setUTCDate(current.getUTCDate() + 1);
   }
 
   return occurrences;
@@ -360,6 +351,9 @@ const EventsContent = ({ churchId, churchName, backButton }) => {
     e.preventDefault();
     try {
       const payload = { ...form };
+      // Agregar offset explícito de Panamá (UTC-5) a las fechas naivas del input
+      payload.start_date = appendPanamaOffset(payload.start_date);
+      if (payload.end_date) payload.end_date = appendPanamaOffset(payload.end_date);
       // SuperAdmin: enviar church_id explícitamente al crear
       if (churchId && !editing) {
         payload.church_id = churchId;
@@ -682,7 +676,8 @@ const EventsContent = ({ churchId, churchName, backButton }) => {
 
   const formatDate = (d) => {
     if (!d) return '-';
-    return new Date(d).toLocaleDateString('es-ES', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    // Forzar hora de Panamá (UTC-5) sin importar timezone del navegador
+    return formatDatePanama(d, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
   // Contadores en tiempo real
@@ -906,10 +901,10 @@ const EventsContent = ({ churchId, churchName, backButton }) => {
           })
           .sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
 
-        // Agrupar eventos por fecha (día) para mostrar headers de fecha
+        // Agrupar eventos por fecha (día) en hora Panamá para mostrar headers de fecha
         const groupedByDate = {};
         monthEvents.forEach((ev) => {
-          const dateKey = new Date(ev.start_date).toLocaleDateString('es-ES', {
+          const dateKey = formatDatePanama(ev.start_date, {
             weekday: 'long', day: 'numeric', month: 'long',
           });
           if (!groupedByDate[dateKey]) groupedByDate[dateKey] = [];

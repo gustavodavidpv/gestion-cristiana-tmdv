@@ -13,6 +13,7 @@
  * Dependencia: pdfkit (npm install pdfkit)
  */
 const PDFDocument = require('pdfkit');
+const { toPanamaDate } = require('./panamaTime');
 
 // =============================================
 // CONFIGURACIÓN
@@ -85,12 +86,13 @@ function generateSalesCalendarPdf({ year, churchName, events }) {
    */
   const eventsByMonth = {};
   events.forEach((ev) => {
-    const d = new Date(ev.start_date);
-    const monthIdx = d.getMonth(); // 0-11
+    // Usar toPanamaDate + getUTC*() para obtener componentes en hora Panamá
+    const d = toPanamaDate(ev.start_date);
+    const monthIdx = d.getUTCMonth(); // 0-11
     if (!eventsByMonth[monthIdx]) eventsByMonth[monthIdx] = [];
     eventsByMonth[monthIdx].push({
-      day: d.getDate(),
-      dayName: DAY_NAMES[d.getDay()],
+      day: d.getUTCDate(),
+      dayName: DAY_NAMES[d.getUTCDay()],
       title: ev.title || 'Ventas',
     });
   });
@@ -260,12 +262,12 @@ function generateSalesCalendarPdf({ year, churchName, events }) {
      .text('IMPORTANTE: ANUNCIAR CON TIEMPO EL DÍA QUE NO HARÁN VENTA PARA CEDER EL ESPACIO A OTRO GRUPO',
        startX, footerY, { width: pageWidth, align: 'center' });
 
-  // Fecha de generación
-  const now = new Date();
-  const genDate = now.toLocaleDateString('es-ES', {
+  // Fecha de generación en hora Panamá
+  const genDate = new Intl.DateTimeFormat('es-ES', {
     year: 'numeric', month: 'long', day: 'numeric',
     hour: '2-digit', minute: '2-digit',
-  });
+    timeZone: 'America/Panama',
+  }).format(new Date());
   doc.font('Helvetica').fontSize(6.5).fillColor('#999')
      .text(`Generado: ${genDate}`, startX, footerY + 14, {
        width: pageWidth, align: 'right',

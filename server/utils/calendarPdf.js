@@ -11,6 +11,7 @@
  * Dependencia: pdfkit (npm install pdfkit)
  */
 const PDFDocument = require('pdfkit');
+const { toPanamaDate, formatTimePanama } = require('./panamaTime');
 
 // =============================================
 // CONFIGURACIÓN DE COLORES Y ESTILOS
@@ -76,12 +77,8 @@ function getCalendarGrid(year, month) {
   return weeks;
 }
 
-function formatTime(date) {
-  const d = new Date(date);
-  const h = d.getHours().toString().padStart(2, '0');
-  const m = d.getMinutes().toString().padStart(2, '0');
-  return `${h}:${m}`;
-}
+/** Formatea hora en hora Panamá (UTC-5) como HH:MM */
+const formatTime = formatTimePanama;
 
 function truncate(text, max) {
   if (!text) return '';
@@ -89,12 +86,12 @@ function truncate(text, max) {
 }
 
 /**
- * Extrae solo la parte de fecha (sin hora) para comparar días.
- * Esto evita problemas de zona horaria al segmentar por día.
+ * Extrae solo la parte de fecha (sin hora) en hora Panamá para comparar días.
+ * Usa toPanamaDate + getUTC*() para evitar problemas de zona horaria del servidor.
  */
 function toLocalDateStr(date) {
-  const d = new Date(date);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const d = toPanamaDate(date);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
 
 /**
@@ -115,12 +112,13 @@ function toLocalDateStr(date) {
  * @returns {Array} Array de { day, label, title, event_type, dayType, sortTime, cultoRoles }
  */
 function expandEventToDays(ev, year, month) {
-  const start = new Date(ev.start_date);
-  const end = ev.end_date ? new Date(ev.end_date) : start;
+  // Usar toPanamaDate + getUTC*() para obtener componentes en hora Panamá
+  const startP = toPanamaDate(ev.start_date);
+  const endP = ev.end_date ? toPanamaDate(ev.end_date) : startP;
 
-  // Extraer fechas sin hora para comparar días
-  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-  const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  // Extraer fechas sin hora en hora Panamá para comparar días
+  const startDay = new Date(Date.UTC(startP.getUTCFullYear(), startP.getUTCMonth(), startP.getUTCDate()));
+  const endDay = new Date(Date.UTC(endP.getUTCFullYear(), endP.getUTCMonth(), endP.getUTCDate()));
 
   // Si start y end son el mismo día
   const isSameDay = startDay.getTime() === endDay.getTime();
@@ -138,35 +136,35 @@ function expandEventToDays(ev, year, month) {
   }
 
   const occurrences = [];
-  const firstDayOfMonth = new Date(year, month - 1, 1);
-  const lastDayOfMonth = new Date(year, month, 0);
+  const firstDayOfMonth = new Date(Date.UTC(year, month - 1, 1));
+  const lastDayOfMonth = new Date(Date.UTC(year, month, 0));
 
-  // Iterar cada día desde startDay hasta endDay
+  // Iterar cada día desde startDay hasta endDay (usando UTC para consistencia)
   let current = new Date(Math.max(startDay.getTime(), firstDayOfMonth.getTime()));
   const limit = new Date(Math.min(endDay.getTime(), lastDayOfMonth.getTime()));
 
   while (current <= limit) {
-    const day = current.getDate();
+    const day = current.getUTCDate();
     const isFirstDay = current.getTime() === startDay.getTime();
     const isLastDay = current.getTime() === endDay.getTime();
 
     let label, dayType, sortTime;
 
     if (isSameDay) {
-      // Evento de un solo día: mostrar hora inicio-fin
-      const startT = formatTime(start);
-      const endT = ev.end_date ? `-${formatTime(end)}` : '';
+      // Evento de un solo día: mostrar hora inicio-fin (hora Panamá)
+      const startT = formatTime(ev.start_date);
+      const endT = ev.end_date ? `-${formatTime(ev.end_date)}` : '';
       label = `${startT}${endT}`;
       dayType = 'single';
-      sortTime = start.getHours() * 60 + start.getMinutes();
+      sortTime = startP.getUTCHours() * 60 + startP.getUTCMinutes();
     } else if (isFirstDay) {
       // Primer día del evento multi-día
-      label = `${formatTime(start)} ▶`;
+      label = `${formatTime(ev.start_date)} ▶`;
       dayType = 'start';
-      sortTime = start.getHours() * 60 + start.getMinutes();
+      sortTime = startP.getUTCHours() * 60 + startP.getUTCMinutes();
     } else if (isLastDay) {
       // Último día del evento multi-día
-      label = `▶ ${formatTime(end)}`;
+      label = `▶ ${formatTime(ev.end_date)}`;
       dayType = 'end';
       sortTime = 0; // Mostrar al inicio del día
     } else {
@@ -186,8 +184,8 @@ function expandEventToDays(ev, year, month) {
       cultoRoles,  // Array de roles de culto (vacío si no es Culto)
     });
 
-    // Avanzar al siguiente día
-    current.setDate(current.getDate() + 1);
+    // Avanzar al siguiente día (usando UTC para consistencia)
+    current.setUTCDate(current.getUTCDate() + 1);
   }
 
   return occurrences;
@@ -449,11 +447,12 @@ function generateCalendarPdf({ year, month, churchName, events }) {
   doc.font('Helvetica').fontSize(6.5).fillColor('#555')
      .text('| P: Predica  D: Dirige  C: Canta', legendX + 5, footerY, { lineBreak: false });
 
-  const now = new Date();
-  const genDate = now.toLocaleDateString('es-ES', {
+  // Formatear fecha de generación en hora Panamá
+  const genDate = new Intl.DateTimeFormat('es-ES', {
     year: 'numeric', month: 'long', day: 'numeric',
     hour: '2-digit', minute: '2-digit',
-  });
+    timeZone: 'America/Panama',
+  }).format(new Date());
   doc.font('Helvetica').fontSize(6.5).fillColor('#999')
      .text(`Generado: ${genDate}`, startX, footerY + 10, {
        width: pageWidth, align: 'right',
