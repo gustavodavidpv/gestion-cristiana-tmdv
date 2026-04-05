@@ -51,10 +51,11 @@ const Notifications = () => {
   const [status, setStatus] = useState(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
 
-  // Horarios programados
+  // Horarios programados (incluye días de anticipación para recordatorio previo)
   const [schedule, setSchedule] = useState({
     notification_day_before_hour: 18,
     notification_same_day_hour: 7,
+    notification_day_before_days: 1,
   });
   const [dayBeforeEnabled, setDayBeforeEnabled] = useState(true);
   const [sameDayEnabled, setSameDayEnabled] = useState(true);
@@ -89,6 +90,8 @@ const Notifications = () => {
       setSchedule({
         notification_day_before_hour: data.notification_day_before_hour ?? 18,
         notification_same_day_hour: data.notification_same_day_hour ?? 7,
+        // Días de anticipación configurables (default 1 = día anterior)
+        notification_day_before_days: data.notification_day_before_days ?? 1,
       });
       setDayBeforeEnabled(data.notification_day_before_hour !== null);
       setSameDayEnabled(data.notification_same_day_hour !== null);
@@ -125,6 +128,8 @@ const Notifications = () => {
       await api.put('/notifications/schedule', {
         notification_day_before_hour: dayBeforeEnabled ? schedule.notification_day_before_hour : null,
         notification_same_day_hour: sameDayEnabled ? schedule.notification_same_day_hour : null,
+        // Enviar los días de anticipación configurados por el admin
+        notification_day_before_days: schedule.notification_day_before_days,
       });
       toast.success('Horario de notificaciones guardado');
     } catch (error) {
@@ -236,27 +241,49 @@ const Notifications = () => {
                   }
                   label={
                     <Box>
-                      <Typography variant="body2" fontWeight={600}>Recordatorio Día Anterior</Typography>
+                      <Typography variant="body2" fontWeight={600}>Recordatorio Previo</Typography>
                       <Typography variant="caption" color="text.secondary">
-                        "Mañana te corresponde Predicar/Dirigir/Cantar..."
+                        {/* Texto dinámico según los días configurados */}
+                        {schedule.notification_day_before_days === 1
+                          ? '"Mañana te corresponde Predicar/Dirigir/Cantar..."'
+                          : `"En ${schedule.notification_day_before_days} días te corresponde Predicar/Dirigir/Cantar..."`}
                       </Typography>
                     </Box>
                   }
                   sx={{ mb: 1, ml: 0 }}
                 />
                 {dayBeforeEnabled && (
-                  <FormControl fullWidth size="small" sx={{ mt: 1 }}>
-                    <InputLabel>Hora de envío</InputLabel>
-                    <Select
-                      value={schedule.notification_day_before_hour}
-                      onChange={(e) => setSchedule({ ...schedule, notification_day_before_hour: e.target.value })}
-                      label="Hora de envío"
-                    >
-                      {HOUR_OPTIONS.map((opt) => (
-                        <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                  <>
+                    {/* Selector de días de anticipación (configurable por admin) */}
+                    <FormControl fullWidth size="small" sx={{ mt: 1 }}>
+                      <InputLabel>Días de anticipación</InputLabel>
+                      <Select
+                        value={schedule.notification_day_before_days}
+                        onChange={(e) => setSchedule({ ...schedule, notification_day_before_days: e.target.value })}
+                        label="Días de anticipación"
+                      >
+                        {/* Opciones de 1 a 7 días de anticipación */}
+                        {[1, 2, 3, 4, 5, 6, 7].map((d) => (
+                          <MenuItem key={d} value={d}>
+                            {d === 1 ? '1 día antes (mañana)' : `${d} días antes`}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    {/* Selector de hora de envío */}
+                    <FormControl fullWidth size="small" sx={{ mt: 1 }}>
+                      <InputLabel>Hora de envío</InputLabel>
+                      <Select
+                        value={schedule.notification_day_before_hour}
+                        onChange={(e) => setSchedule({ ...schedule, notification_day_before_hour: e.target.value })}
+                        label="Hora de envío"
+                      >
+                        {HOUR_OPTIONS.map((opt) => (
+                          <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </>
                 )}
               </CardContent>
             </Card>
@@ -316,7 +343,10 @@ const Notifications = () => {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
                 {dayBeforeEnabled ? <NotifActiveIcon fontSize="small" color="primary" /> : <NotifOffIcon fontSize="small" color="disabled" />}
                 <Typography variant="caption">
-                  Día anterior: {dayBeforeEnabled ? HOUR_OPTIONS[schedule.notification_day_before_hour]?.label : 'Desactivado'}
+                  {/* Mostrar días de anticipación y hora configurada */}
+                  Recordatorio previo: {dayBeforeEnabled
+                    ? `${schedule.notification_day_before_days} día${schedule.notification_day_before_days > 1 ? 's' : ''} antes a las ${HOUR_OPTIONS[schedule.notification_day_before_hour]?.label}`
+                    : 'Desactivado'}
                 </Typography>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.3 }}>

@@ -80,9 +80,10 @@ function startNotificationScheduler() {
       const { Op } = require('sequelize');
 
       // Iglesias con recordatorio DÍA ANTERIOR a esta hora
+      // Se incluye notification_day_before_days para saber cuántos días antes notificar
       const churchesDayBefore = await Church.findAll({
         where: { notification_day_before_hour: panamaHour },
-        attributes: ['id', 'name'],
+        attributes: ['id', 'name', 'notification_day_before_days'],
       });
 
       // Iglesias con recordatorio MISMO DÍA a esta hora
@@ -91,16 +92,21 @@ function startNotificationScheduler() {
         attributes: ['id', 'name'],
       });
 
-      // Procesar recordatorios del DÍA ANTERIOR
+      // Procesar recordatorios del DÍA ANTERIOR (con días configurables)
       for (const church of churchesDayBefore) {
-        console.log(`[SCHEDULER] 🔔 Iglesia "${church.name}": Enviando recordatorios para cultos de mañana...`);
+        // Usar los días configurados por el admin (default 1 = mañana)
+        const daysAhead = church.notification_day_before_days || 1;
+        const daysLabel = daysAhead === 1 ? 'mañana' : `en ${daysAhead} días`;
+        console.log(`[SCHEDULER] 🔔 Iglesia "${church.name}": Enviando recordatorios para cultos de ${daysLabel}...`);
         try {
-          const tomorrow = new Date();
-          tomorrow.setDate(tomorrow.getDate() + 1);
-          const summary = await processRemindersForDate(tomorrow, 'reminder', church.id);
+          const targetDate = new Date();
+          // Sumar los días configurados en lugar del +1 hardcoded
+          targetDate.setDate(targetDate.getDate() + daysAhead);
+          // Pasar daysAhead para que el mensaje refleje correctamente la anticipación
+          const summary = await processRemindersForDate(targetDate, 'reminder', church.id, daysAhead);
           console.log(`[SCHEDULER] ✅ ${church.name}: ${summary.total_sent} enviados, ${summary.total_failed} fallidos.`);
         } catch (err) {
-          console.error(`[SCHEDULER] ❌ ${church.name}: Error día anterior:`, err.message);
+          console.error(`[SCHEDULER] ❌ ${church.name}: Error recordatorio previo:`, err.message);
         }
       }
 

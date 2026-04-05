@@ -113,6 +113,19 @@ const Church = sequelize.define('Church', {
     comment: 'Hora (0-23) para recordatorio del día anterior. null = desactivado.',
   },
   /**
+   * notification_day_before_days - Cantidad de días antes del culto para enviar
+   * el recordatorio previo. Ej: 1 = un día antes (mañana), 3 = tres días antes.
+   * Permite al admin configurar con cuánta anticipación se notifica.
+   * Valor por defecto: 1 (comportamiento original).
+   */
+  notification_day_before_days: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 1,
+    validate: { min: 1, max: 30 },
+    comment: 'Días de anticipación para el recordatorio previo (1-30). Default: 1.',
+  },
+  /**
    * notification_same_day_hour - Hora (0-23) para enviar recordatorio
    * el MISMO DÍA del culto. Ej: 7 = 7:00 AM.
    * Si es null, no se envía recordatorio el mismo día.

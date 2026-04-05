@@ -25,7 +25,14 @@
       "Bash(node -c server/middleware/auth.js)",
       "Bash(node -c server/utils/panamaTime.js)",
       "Bash(node -c server/utils/calendarPdf.js)",
-      "Bash(node -c server/utils/salesCalendarPdf.js)"
+      "Bash(node -c server/utils/salesCalendarPdf.js)",
+      "Bash(find /c/Users/Gustavo Polanco/source/repos/TMDV/gestion-cristiana-tmdv/client -name *notif* -o -name *Notif*)",
+      "Bash(find /c/Users/Gustavo Polanco/source/repos/TMDV/gestion-cristiana-tmdv/server -name *model* -o -name *Model*)",
+      "Bash(find /c/Users/Gustavo Polanco/source/repos/TMDV/gestion-cristiana-tmdv -name *migrat* -o -name *seed*)",
+      "Bash(find /c/Users/Gustavo Polanco/source/repos/TMDV/gestion-cristiana-tmdv -name README* -o -name *.md)",
+      "Bash(grep -r \"DAYS_BEFORE\\\\|NOTIFICATION_DAYS\\\\|notification.*days\" /c/Users/Gustavo Polanco/source/repos/TMDV/gestion-cristiana-tmdv --include=*.js --include=*.jsx --include=*.env*)",
+      "Bash(find /c/Users/Gustavo Polanco/source/repos/TMDV/gestion-cristiana-tmdv -name .env* -type f)",
+      "Bash(find /c/Users/Gustavo Polanco/source/repos/TMDV/gestion-cristiana-tmdv/server -name *const* -o -name *config*)"
     ]
   }
 }

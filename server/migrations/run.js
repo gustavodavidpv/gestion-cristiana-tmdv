@@ -356,6 +356,8 @@ const runMigrations = async () => {
     const notifCols = [
       { col: 'notification_day_before_hour', def: '18' },
       { col: 'notification_same_day_hour', def: '7' },
+      // Días de anticipación para el recordatorio previo (configurable por admin, default 1)
+      { col: 'notification_day_before_days', def: '1' },
     ];
     for (const { col, def } of notifCols) {
       try {

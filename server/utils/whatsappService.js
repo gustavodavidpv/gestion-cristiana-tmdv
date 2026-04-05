@@ -243,14 +243,18 @@ function formatEventTime(date) {
  * @param {string} memberName - Nombre del miembro
  * @param {string} role - Rol asignado
  * @param {Object} event - Evento con title, start_date, location
- * @param {string} type - 'reminder' (día anterior) o 'today' (mismo día)
+ * @param {string} type - 'reminder' (día anterior/previo) o 'today' (mismo día)
  * @param {string} churchName - Nombre de la iglesia
+ * @param {number} daysAhead - Días de anticipación (1="mañana", 2+="en X días")
  * @returns {string} Mensaje formateado con emojis
  */
-function buildReminderMessage(memberName, role, event, type, churchName) {
+function buildReminderMessage(memberName, role, event, type, churchName, daysAhead = 1) {
   const dateStr = formatEventDate(event.start_date);
   const locationStr = event.location ? `📍 Lugar: ${event.location}` : '';
-  const timeWord = type === 'reminder' ? 'mañana' : 'hoy';
+  // Generar palabra temporal según los días de anticipación configurados
+  const timeWord = type === 'reminder'
+    ? (daysAhead === 1 ? 'mañana' : `en ${daysAhead} días`)
+    : 'hoy';
 
   if (type === 'reminder') {
     return [
@@ -258,7 +262,7 @@ function buildReminderMessage(memberName, role, event, type, churchName) {
       ``,
       `¡Hola, ${memberName}! 👋`,
       ``,
-      `Te recordamos que mañana te corresponde ${role} en el culto:`,
+      `Te recordamos que ${timeWord} te corresponde ${role} en el culto:`,
       ``,
       `📋 Evento: ${event.title}`,
       `📅 Fecha: ${dateStr}`,
@@ -304,19 +308,23 @@ function buildReminderMessage(memberName, role, event, type, churchName) {
  *   {{6}} = Ubicación                    (ej: "Iglesia Central")
  * 
  * @param {Object} event - Evento con preacher, worship_leader, singer (objetos Member)
- * @param {string} type - 'reminder' (día anterior) o 'today' (mismo día)
+ * @param {string} type - 'reminder' (día anterior/previo) o 'today' (mismo día)
  * @param {string} churchName - Nombre de la iglesia
+ * @param {number} daysAhead - Días de anticipación (1="mañana", 2+="en X días"). Solo aplica para type='reminder'.
  * @returns {Object} Resumen de envíos { sent, failed, skipped, details }
  */
-async function sendCultoReminders(event, type, churchName) {
+async function sendCultoReminders(event, type, churchName, daysAhead = 1) {
   const results = { sent: 0, failed: 0, skipped: 0, details: [] };
 
   // Nombre del template y idioma (configurables por variable de entorno)
   const templateName = process.env.WHATSAPP_TEMPLATE_NAME || 'culto_recordatorio';
   const templateLang = process.env.WHATSAPP_TEMPLATE_LANG || 'es';
 
-  // Palabra clave según tipo de recordatorio
-  const timeWord = type === 'reminder' ? 'mañana' : 'hoy';
+  // Palabra clave según tipo de recordatorio y días de anticipación
+  // Si es recordatorio previo: "mañana" (1 día) o "en X días" (2+ días)
+  const timeWord = type === 'reminder'
+    ? (daysAhead === 1 ? 'mañana' : `en ${daysAhead} días`)
+    : 'hoy';
 
   // Fecha formateada para el parámetro {{5}}
   const dateStr = formatEventDate(event.start_date);
@@ -370,7 +378,7 @@ async function sendCultoReminders(event, type, churchName) {
     ];
 
     // Log del mensaje ideal (con emojis) para referencia en consola
-    const logMessage = buildReminderMessage(member.first_name, role, event, type, churchName);
+    const logMessage = buildReminderMessage(member.first_name, role, event, type, churchName, daysAhead);
     console.log(`[WHATSAPP] 📋 Mensaje para ${member.first_name} ${member.last_name}:\n${logMessage}\n`);
 
     // Enviar template por WhatsApp

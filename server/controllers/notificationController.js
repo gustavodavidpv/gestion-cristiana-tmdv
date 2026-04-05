@@ -21,13 +21,14 @@ const { applyTenantFilter } = require('../middleware/auth');
 /**
  * Busca cultos con roles asignados para una fecha específica
  * y envía recordatorios por WhatsApp a los miembros.
- * 
+ *
  * @param {Date} targetDate - Fecha del culto (se buscan cultos ese día)
- * @param {string} type - 'reminder' (día anterior) o 'today' (mismo día)
+ * @param {string} type - 'reminder' (día anterior/previo) o 'today' (mismo día)
  * @param {number|null} churchId - Filtrar por iglesia, null para todas
+ * @param {number} daysAhead - Días de anticipación (usado para texto del mensaje: 1="mañana", 2="en 2 días", etc.)
  * @returns {Object} Resumen de envíos
  */
-async function processRemindersForDate(targetDate, type, churchId = null) {
+async function processRemindersForDate(targetDate, type, churchId = null, daysAhead = 1) {
   // Rango del día: desde 00:00 hasta 23:59
   const startOfDay = new Date(targetDate);
   startOfDay.setHours(0, 0, 0, 0);
@@ -67,7 +68,8 @@ async function processRemindersForDate(targetDate, type, churchId = null) {
 
   for (const culto of cultos) {
     const churchName = culto.church?.name || 'Iglesia';
-    const result = await sendCultoReminders(culto, type, churchName);
+    // Pasar daysAhead para que el mensaje refleje la anticipación correcta
+    const result = await sendCultoReminders(culto, type, churchName, daysAhead);
 
     summary.total_sent += result.sent;
     summary.total_failed += result.failed;
@@ -115,7 +117,7 @@ const notificationController = {
       }
 
       const church = await Church.findByPk(churchId, {
-        attributes: ['id', 'name', 'notification_day_before_hour', 'notification_same_day_hour'],
+        attributes: ['id', 'name', 'notification_day_before_hour', 'notification_same_day_hour', 'notification_day_before_days'],
       });
 
       if (!church) {
@@ -127,6 +129,8 @@ const notificationController = {
         church_name: church.name,
         notification_day_before_hour: church.notification_day_before_hour,
         notification_same_day_hour: church.notification_same_day_hour,
+        // Días de anticipación para el recordatorio previo (configurable por admin)
+        notification_day_before_days: church.notification_day_before_days ?? 1,
       });
     } catch (error) {
       res.status(500).json({ message: 'Error al obtener horario.', error: error.message });
@@ -152,7 +156,7 @@ const notificationController = {
         return res.status(404).json({ message: 'Iglesia no encontrada.' });
       }
 
-      const { notification_day_before_hour, notification_same_day_hour } = req.body;
+      const { notification_day_before_hour, notification_same_day_hour, notification_day_before_days } = req.body;
 
       // Validar horas (0-23 o null para desactivar)
       const validateHour = (h) => {
@@ -162,17 +166,28 @@ const notificationController = {
         return parsed;
       };
 
+      // Validar días de anticipación (1-30, default 1)
+      const validateDays = (d) => {
+        if (d === null || d === '' || d === undefined) return 1;
+        const parsed = parseInt(d, 10);
+        if (isNaN(parsed) || parsed < 1 || parsed > 30) return 1;
+        return parsed;
+      };
+
       await church.update({
         notification_day_before_hour: validateHour(notification_day_before_hour),
         notification_same_day_hour: validateHour(notification_same_day_hour),
+        // Guardar los días de anticipación configurados por el admin
+        notification_day_before_days: validateDays(notification_day_before_days),
       });
 
-      console.log(`[NOTIFICATIONS] Horario actualizado para "${church.name}": día anterior=${church.notification_day_before_hour}h, mismo día=${church.notification_same_day_hour}h`);
+      console.log(`[NOTIFICATIONS] Horario actualizado para "${church.name}": día anterior=${church.notification_day_before_hour}h (${church.notification_day_before_days} días antes), mismo día=${church.notification_same_day_hour}h`);
 
       res.json({
         message: 'Horario de notificaciones guardado exitosamente.',
         notification_day_before_hour: church.notification_day_before_hour,
         notification_same_day_hour: church.notification_same_day_hour,
+        notification_day_before_days: church.notification_day_before_days,
       });
     } catch (error) {
       res.status(500).json({ message: 'Error al guardar horario.', error: error.message });
@@ -233,21 +248,31 @@ const notificationController = {
       const { type, date } = req.body || {};
       let targetDate;
       let reminderType = type || 'reminder';
+      let daysBeforeSend = 1; // Default: 1 día antes
+
+      const churchId = req.user.church_id || null;
 
       if (date) {
         targetDate = new Date(date + 'T00:00:00');
       } else {
         targetDate = new Date();
         if (reminderType === 'reminder') {
-          targetDate.setDate(targetDate.getDate() + 1);
+          // Obtener los días de anticipación configurados para esta iglesia
+          if (churchId) {
+            const churchConfig = await Church.findByPk(churchId, { attributes: ['notification_day_before_days'] });
+            if (churchConfig && churchConfig.notification_day_before_days) {
+              daysBeforeSend = churchConfig.notification_day_before_days;
+            }
+          }
+          // Sumar los días configurados para buscar cultos futuros
+          targetDate.setDate(targetDate.getDate() + daysBeforeSend);
         }
       }
 
-      const churchId = req.user.church_id || null;
+      console.log(`[NOTIFICATIONS] Envío manual: tipo=${reminderType}, fecha=${targetDate.toISOString().slice(0, 10)}, iglesia=${churchId || 'todas'}, días anticipación=${daysBeforeSend}`);
 
-      console.log(`[NOTIFICATIONS] Envío manual: tipo=${reminderType}, fecha=${targetDate.toISOString().slice(0, 10)}, iglesia=${churchId || 'todas'}`);
-
-      const summary = await processRemindersForDate(targetDate, reminderType, churchId);
+      // Pasar daysBeforeSend para que el mensaje refleje la anticipación correcta
+      const summary = await processRemindersForDate(targetDate, reminderType, churchId, daysBeforeSend);
 
       res.json({
         message: `Recordatorios procesados: ${summary.total_sent} enviados, ${summary.total_failed} fallidos, ${summary.total_skipped} omitidos.`,
