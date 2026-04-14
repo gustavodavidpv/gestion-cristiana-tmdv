@@ -1,7 +1,15 @@
 const { Minute, MinuteAttendee, MinuteFile, Motion, MotionVoter, Member, Church, User } = require('../models');
-const { applyTenantFilter } = require('../middleware/auth');
+const { applyTenantFilter, isSuperAdmin } = require('../middleware/auth');
 const fs = require('fs');
 const path = require('path');
+
+/** Ruta base de uploads (Render Disk en produccion, local en desarrollo) */
+const baseUploadPath = process.env.UPLOAD_PATH || path.join(__dirname, '..', 'public', 'uploads');
+
+/** Verifica que el usuario pertenece a la misma iglesia del acta (o es SuperAdmin) */
+const checkTenant = (minute, user) => {
+  return isSuperAdmin(user) || minute.church_id === user.church_id;
+};
 
 const minuteController = {
   // GET /api/minutes
@@ -68,7 +76,7 @@ const minuteController = {
         ],
       });
 
-      if (!minute) {
+      if (!minute || !checkTenant(minute, req.user)) {
         return res.status(404).json({ message: 'Acta no encontrada.' });
       }
 
@@ -142,7 +150,7 @@ const minuteController = {
   async update(req, res) {
     try {
       const minute = await Minute.findByPk(req.params.id);
-      if (!minute) {
+      if (!minute || !checkTenant(minute, req.user)) {
         return res.status(404).json({ message: 'Acta no encontrada.' });
       }
 
@@ -165,7 +173,7 @@ const minuteController = {
   async uploadFiles(req, res) {
     try {
       const minute = await Minute.findByPk(req.params.id);
-      if (!minute) {
+      if (!minute || !checkTenant(minute, req.user)) {
         return res.status(404).json({ message: 'Acta no encontrada.' });
       }
 
@@ -199,18 +207,54 @@ const minuteController = {
   },
 
   /**
+   * GET /api/minutes/:id/files/:fileId/download
+   * Descarga un archivo de acta (autenticado, con validacion de tenant).
+   */
+  async downloadFile(req, res) {
+    try {
+      const minute = await Minute.findByPk(req.params.id);
+      if (!minute || !checkTenant(minute, req.user)) {
+        return res.status(404).json({ message: 'Acta no encontrada.' });
+      }
+
+      const file = await MinuteFile.findByPk(req.params.fileId);
+      if (!file || file.minute_id !== parseInt(req.params.id)) {
+        return res.status(404).json({ message: 'Archivo no encontrado.' });
+      }
+
+      // Construir ruta absoluta del archivo en disco
+      const relativePath = file.file_url.replace(/^\/uploads\//, '');
+      const filePath = path.join(baseUploadPath, relativePath);
+
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ message: 'El archivo no existe en el servidor.' });
+      }
+
+      res.download(filePath, file.original_name);
+    } catch (error) {
+      res.status(500).json({ message: 'Error al descargar archivo.', error: error.message });
+    }
+  },
+
+  /**
    * DELETE /api/minutes/:id/files/:fileId
    * Elimina un archivo específico de una acta.
    */
   async deleteFile(req, res) {
     try {
+      const minute = await Minute.findByPk(req.params.id);
+      if (!minute || !checkTenant(minute, req.user)) {
+        return res.status(404).json({ message: 'Acta no encontrada.' });
+      }
+
       const file = await MinuteFile.findByPk(req.params.fileId);
       if (!file || file.minute_id !== parseInt(req.params.id)) {
         return res.status(404).json({ message: 'Archivo no encontrado.' });
       }
 
       // Eliminar archivo físico del disco
-      const filePath = path.join(__dirname, '..', 'public', file.file_url);
+      const relativePath = file.file_url.replace(/^\/uploads\//, '');
+      const filePath = path.join(baseUploadPath, relativePath);
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
       }
@@ -226,12 +270,15 @@ const minuteController = {
   async delete(req, res) {
     try {
       const minute = await Minute.findByPk(req.params.id);
-      if (!minute) return res.status(404).json({ message: 'Acta no encontrada.' });
+      if (!minute || !checkTenant(minute, req.user)) {
+        return res.status(404).json({ message: 'Acta no encontrada.' });
+      }
 
       // Eliminar archivos físicos
       const files = await MinuteFile.findAll({ where: { minute_id: minute.id } });
       for (const file of files) {
-        const filePath = path.join(__dirname, '..', 'public', file.file_url);
+        const relativePath = file.file_url.replace(/^\/uploads\//, '');
+        const filePath = path.join(baseUploadPath, relativePath);
         if (fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
         }

@@ -6,8 +6,9 @@ const fs = require('fs');
 const minuteController = require('../controllers/minuteController');
 const { authenticate, authorizePermission } = require('../middleware/auth');
 
-// Asegurar que el directorio de uploads exista
-const uploadsDir = path.join(__dirname, '..', 'public', 'uploads', 'minutes');
+// Ruta de uploads: configurable via UPLOAD_PATH (Render Disk en produccion)
+const baseUploadPath = process.env.UPLOAD_PATH || path.join(__dirname, '..', 'public', 'uploads');
+const uploadsDir = path.join(baseUploadPath, 'minutes');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
@@ -51,6 +52,9 @@ router.delete('/:id', authorizePermission('minutes', 'delete'), minuteController
 
 // Subir archivo(s) de acta — multer .array() para multi-file (máx 5)
 router.post('/:id/upload', authorizePermission('minutes', 'edit'), upload.array('files', 5), minuteController.uploadFiles);
+
+// Descargar un archivo de acta (autenticado, con validacion de tenant)
+router.get('/:id/files/:fileId/download', authorizePermission('minutes', 'view'), minuteController.downloadFile);
 
 // Eliminar un archivo específico de una acta
 router.delete('/:id/files/:fileId', authorizePermission('minutes', 'delete'), minuteController.deleteFile);

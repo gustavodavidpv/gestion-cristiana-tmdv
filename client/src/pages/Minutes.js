@@ -32,15 +32,6 @@ import {
   AttachFile as AttachIcon,
 } from '@mui/icons-material';
 
-/** URL base para descargar archivos estáticos (uploads) */
-const getFileUrl = (path) => {
-  if (!path) return '#';
-  const base = process.env.REACT_APP_API_URL
-    ? process.env.REACT_APP_API_URL.replace('/api', '')
-    : '';
-  return `${base}${path}`;
-};
-
 /** Retorna un icono apropiado según el tipo de archivo */
 const getFileIcon = (fileType) => {
   if (!fileType) return <FileIcon />;
@@ -226,6 +217,28 @@ const Minutes = () => {
       setUploadProgress(0);
       // Limpiar el input file para poder subir el mismo archivo de nuevo
       e.target.value = '';
+    }
+  };
+
+  /**
+   * Descarga un archivo de acta via endpoint autenticado.
+   * Genera un blob URL temporal para trigger la descarga.
+   */
+  const handleDownloadFile = async (fileId, fileName) => {
+    try {
+      const response = await api.get(`/minutes/${showDetail.id}/files/${fileId}/download`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', fileName || 'archivo');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.error('Error al descargar archivo');
     }
   };
 
@@ -509,12 +522,10 @@ const Minutes = () => {
                       <ListItemText
                         primary={
                           <Typography
-                            component="a"
-                            href={getFileUrl(file.file_url)}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            component="span"
                             variant="body2"
-                            sx={{ color: 'primary.main', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+                            onClick={() => handleDownloadFile(file.id, file.original_name)}
+                            sx={{ color: 'primary.main', textDecoration: 'none', cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
                           >
                             {file.original_name}
                           </Typography>
@@ -523,8 +534,8 @@ const Minutes = () => {
                       />
                       <ListItemSecondaryAction>
                         {/* Botón descargar */}
-                        <IconButton size="small" component="a" href={getFileUrl(file.file_url)}
-                          target="_blank" rel="noopener noreferrer" color="primary" title="Descargar">
+                        <IconButton size="small" color="primary" title="Descargar"
+                          onClick={() => handleDownloadFile(file.id, file.original_name)}>
                           <DownloadIcon fontSize="small" />
                         </IconButton>
                         {/* Botón eliminar */}
