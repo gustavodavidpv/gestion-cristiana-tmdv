@@ -9,14 +9,19 @@ const { authenticate, authorizePermission } = require('../middleware/auth');
 // Ruta de uploads: configurable via UPLOAD_PATH (Render Disk en produccion)
 const baseUploadPath = process.env.UPLOAD_PATH || path.join(__dirname, '..', 'public', 'uploads');
 const uploadsDir = path.join(baseUploadPath, 'minutes');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
 
 // Configuración de multer para subir archivos de actas
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, uploadsDir);
+    // Crear directorio de forma lazy (por request) para tolerar Render Disk
+    try {
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+      cb(null, uploadsDir);
+    } catch (err) {
+      cb(new Error(`No se pudo crear el directorio de uploads: ${err.message}`));
+    }
   },
   filename: (req, file, cb) => {
     // Sanitizar nombre: quitar caracteres peligrosos, agregar timestamp
