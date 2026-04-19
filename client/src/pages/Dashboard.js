@@ -46,25 +46,47 @@ const StatCard = ({ icon, title, value, color }) => (
 // Código original sin cambios
 // ========================================================
 const RegularDashboard = ({ user }) => {
-  const [stats, setStats] = useState({ members: 0, events: 0, minutes: 0, church: null });
+  // Año actual y listado de años disponibles para el selector (últimos 5 años)
+  const currentYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - i);
+
+  // Año seleccionado: por defecto el año actual (cumple requisito del filtro)
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+
+  // summary: viene del endpoint ligero /churches/my/summary?year=YYYY
+  //   → accesible para cualquier rol con permiso `dashboard.view`.
+  // church: viene de /churches/:id (solo si el rol tiene `churches.view`)
+  //   → se usa para el bloque "Resumen de la Iglesia".
+  const [stats, setStats] = useState({ members: 0, events: 0, minutes: 0, church: null, summary: null });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const loadStats = async () => {
+      setLoading(true);
       try {
-        // Cargar todas las estadísticas en paralelo
-        const [membersRes, eventsRes, minutesRes] = await Promise.allSettled([
+        // Cargar contadores generales y resumen del año en paralelo.
+        // Usamos Promise.allSettled para que una caída parcial no rompa el dashboard.
+        const [membersRes, eventsRes, minutesRes, summaryRes] = await Promise.allSettled([
           api.get('/members', { params: { limit: 1 } }),
           api.get('/events', { params: { limit: 1 } }),
           api.get('/minutes', { params: { limit: 1 } }),
+          // Nuevo endpoint: devuelve decisiones de fe del año seleccionado
+          // protegido por `dashboard.view`, no requiere `churches.view`.
+          api.get('/churches/my/summary', { params: { year: selectedYear } }),
         ]);
 
+        // Resumen anual de la iglesia (decisiones de fe, etc.) — puede fallar
+        // si el usuario no tiene permiso `dashboard.view` (no debería, pero safe).
+        const summary = summaryRes.status === 'fulfilled' ? summaryRes.value.data : null;
+
+        // Datos extendidos de la iglesia: solo disponibles si el rol tiene `churches.view`.
+        // Si falla (403), se ignora silenciosamente y no se muestra "Resumen de la Iglesia".
         let church = null;
         if (user?.church_id) {
           try {
             const churchRes = await api.get(`/churches/${user.church_id}`);
             church = churchRes.data.church;
-          } catch (e) { /* usuario sin acceso a la iglesia */ }
+          } catch (e) { /* usuario sin acceso a la iglesia — se omite el bloque */ }
         }
 
         setStats({
@@ -72,44 +94,71 @@ const RegularDashboard = ({ user }) => {
           events: eventsRes.status === 'fulfilled' ? eventsRes.value.data.pagination.total : 0,
           minutes: minutesRes.status === 'fulfilled' ? minutesRes.value.data.pagination.total : 0,
           church,
+          summary,
         });
       } catch (error) {
+        // Fallback general ante errores inesperados
         console.error('Error loading stats:', error);
       } finally {
         setLoading(false);
       }
     };
     loadStats();
-  }, [user]);
+  }, [user, selectedYear]); // recarga cuando cambia el año seleccionado
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress /></Box>;
 
   const church = stats.church;
+  const summary = stats.summary;
+
+  // Valor de decisiones de fe: prioriza el resumen dinámico del año seleccionado.
+  // Si el endpoint no respondió, cae al campo almacenado en la iglesia (solo coincide con año actual).
+  const faithDecisionsValue = summary?.faith_decisions ?? church?.faith_decisions_year ?? 0;
+  const faithDecisionsYear = summary?.year ?? church?.faith_decisions_ref_year ?? selectedYear;
 
   return (
     <Box>
-      {/* Bienvenida */}
-      <Typography variant="h5" fontWeight={700} gutterBottom>
-        Bienvenido, {user?.full_name}
-      </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-        {user?.church?.name || 'Gestión Cristiana TMDV'}
-      </Typography>
+      {/* Header con bienvenida + selector de año */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
+        <Box>
+          <Typography variant="h5" fontWeight={700} gutterBottom>
+            Bienvenido, {user?.full_name}
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            {user?.church?.name || 'Gestión Cristiana TMDV'}
+          </Typography>
+        </Box>
+        {/* Selector de año — por defecto año actual, permite consultar años anteriores */}
+        <FormControl size="small" sx={{ minWidth: 120 }}>
+          <InputLabel>Año</InputLabel>
+          <Select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} label="Año">
+            {yearOptions.map((y) => <MenuItem key={y} value={y}>{y}</MenuItem>)}
+          </Select>
+        </FormControl>
+      </Box>
 
-      {/* Tarjetas de estadísticas */}
+      {/* Tarjetas de estadísticas
+          Mobile (xs): 1 tarjeta completa por fila (xs={12}) → evita que se vean descuadradas.
+          Tablet (sm): 2 por fila. Desktop (md): 4 por fila. */}
       <Grid container spacing={2} sx={{ mb: 4 }}>
-        <Grid item xs={6} md={3}>
+        <Grid item xs={12} sm={6} md={3}>
           <StatCard icon={<PeopleIcon />} title="Miembros" value={stats.members} color="#1565C0" />
         </Grid>
-        <Grid item xs={6} md={3}>
+        <Grid item xs={12} sm={6} md={3}>
           <StatCard icon={<EventIcon />} title="Eventos" value={stats.events} color="#E65100" />
         </Grid>
-        <Grid item xs={6} md={3}>
+        <Grid item xs={12} sm={6} md={3}>
           <StatCard icon={<DescriptionIcon />} title="Actas" value={stats.minutes} color="#6A1B9A" />
         </Grid>
-        <Grid item xs={6} md={3}>
-          <StatCard icon={<FavoriteIcon />} title={`Dec. Fe (${church?.faith_decisions_ref_year || new Date().getFullYear()})`}
-            value={church?.faith_decisions_year || 0} color="#C62828" />
+        <Grid item xs={12} sm={6} md={3}>
+          {/* Decisiones de fe del año seleccionado — ahora visible para cualquier rol
+              con permiso `dashboard.view`, aunque no tenga `churches.view`. */}
+          <StatCard
+            icon={<FavoriteIcon />}
+            title={`Dec. Fe (${faithDecisionsYear})`}
+            value={faithDecisionsValue}
+            color="#C62828"
+          />
         </Grid>
       </Grid>
 
@@ -219,18 +268,20 @@ const SuperAdminDashboard = ({ user }) => {
         </FormControl>
       </Box>
 
-      {/* Tarjetas de totales */}
+      {/* Tarjetas de totales
+          Mobile (xs): 1 por fila (card completa) → se ve ordenada en celulares.
+          Tablet (sm): 2 por fila. Desktop (md): 4 por fila. */}
       <Grid container spacing={2} sx={{ mb: 4 }}>
-        <Grid item xs={6} md={3}>
+        <Grid item xs={12} sm={6} md={3}>
           <StatCard icon={<PeopleIcon />} title="Total Miembros" value={totals.members} color="#1565C0" />
         </Grid>
-        <Grid item xs={6} md={3}>
+        <Grid item xs={12} sm={6} md={3}>
           <StatCard icon={<EventIcon />} title={`Eventos (${selectedYear})`} value={totals.events} color="#E65100" />
         </Grid>
-        <Grid item xs={6} md={3}>
+        <Grid item xs={12} sm={6} md={3}>
           <StatCard icon={<DescriptionIcon />} title={`Actas (${selectedYear})`} value={totals.minutes} color="#6A1B9A" />
         </Grid>
-        <Grid item xs={6} md={3}>
+        <Grid item xs={12} sm={6} md={3}>
           <StatCard icon={<FavoriteIcon />} title={`Dec. Fe (${selectedYear})`} value={totals.faithDecisions} color="#C62828" />
         </Grid>
       </Grid>

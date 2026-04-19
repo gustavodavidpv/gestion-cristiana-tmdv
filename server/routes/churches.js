@@ -9,6 +9,11 @@ router.use(authenticate);
 router.get('/', authorizePermission('churches', 'view'), churchController.getAll);
 // Estadísticas del dashboard para SuperAdmin (DEBE ir ANTES de /:id)
 router.get('/stats/dashboard', authorize('SuperAdmin'), churchController.getDashboardStats);
+// Resumen ligero del dashboard para roles con permiso `dashboard.view`
+// Ej: un rol con solo "ver dashboard" puede consultar decisiones de fe del año
+// sin necesidad de tener `churches.view` sobre el recurso completo.
+// IMPORTANTE: debe ir ANTES de /:id para no colisionar con esa ruta dinámica.
+router.get('/my/summary', authorizePermission('dashboard', 'view'), churchController.getMySummary);
 router.get('/:id', authorizePermission('churches', 'view'), churchController.getById);
 // Solo SuperAdmin puede CREAR y ELIMINAR iglesias (no delegable)
 router.post('/', authorize('SuperAdmin'), churchController.create);
