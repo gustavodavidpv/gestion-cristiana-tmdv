@@ -105,6 +105,119 @@ const churchController = {
     }
   },
 
+  /**
+   * GET /api/churches/my/summary?year=YYYY
+   *
+   * Endpoint ligero para el dashboard de usuarios NO SuperAdmin.
+   * Protegido por el permiso `dashboard.view` (no requiere `churches.view`),
+   * para que roles que solo ven el dashboard puedan obtener la cantidad de
+   * decisiones de fe del año sin necesidad de acceder al recurso completo
+   * de la iglesia.
+   *
+   * Retorna:
+   * - church_id, church_name
+   * - year consultado y año de referencia
+   * - faith_decisions: decisiones de fe del año seleccionado (calculado dinámicamente)
+   * - avg_weekly_attendance: promedio de asistencia semanal del año
+   * - events_count, minutes_count: conteos del año
+   */
+  async getMySummary(req, res) {
+    try {
+      // El usuario debe pertenecer a una iglesia (SuperAdmin usa otro endpoint)
+      if (!req.user?.church_id) {
+        return res.status(400).json({ message: 'El usuario no está asignado a una iglesia.' });
+      }
+
+      // Año consultado: query param o año actual como default
+      const currentYear = new Date().getFullYear();
+      const year = parseInt(req.query.year) || currentYear;
+
+      // Validación básica del año (evita rangos extremos maliciosos)
+      if (year < 2000 || year > currentYear + 1) {
+        return res.status(400).json({ message: 'Año fuera de rango válido.' });
+      }
+
+      const startOfYear = `${year}-01-01`;
+      const endOfYear = `${year}-12-31 23:59:59`;
+      const endDateOnly = `${year}-12-31`;
+
+      // Query única con LEFT JOINs para calcular todas las métricas del año
+      // filtradas a la iglesia del usuario
+      const [row] = await sequelize.query(`
+        SELECT
+          c.id AS church_id,
+          c.name AS church_name,
+          COALESCE(ev.events_count, 0)      AS events_count,
+          COALESCE(mn.minutes_count, 0)     AS minutes_count,
+          COALESCE(fd.faith_decisions, 0)   AS faith_decisions,
+          COALESCE(wa.avg_attendance, 0)    AS avg_weekly_attendance
+        FROM churches c
+        LEFT JOIN (
+          SELECT church_id, COUNT(*) AS events_count
+          FROM events
+          WHERE start_date BETWEEN :startOfYear AND :endOfYear
+            AND church_id = :churchId
+          GROUP BY church_id
+        ) ev ON ev.church_id = c.id
+        LEFT JOIN (
+          SELECT church_id, COUNT(*) AS minutes_count
+          FROM minutes
+          WHERE meeting_date BETWEEN :startDate AND :endDate
+            AND church_id = :churchId
+          GROUP BY church_id
+        ) mn ON mn.church_id = c.id
+        LEFT JOIN (
+          SELECT e.church_id, COUNT(*) AS faith_decisions
+          FROM event_attendees ea
+          JOIN events e ON ea.event_id = e.id
+          WHERE ea.made_faith_decision = true
+            AND e.start_date BETWEEN :startOfYear AND :endOfYear
+            AND e.church_id = :churchId
+          GROUP BY e.church_id
+        ) fd ON fd.church_id = c.id
+        LEFT JOIN (
+          SELECT church_id, ROUND(AVG(attendance_count)) AS avg_attendance
+          FROM weekly_attendances
+          WHERE week_date BETWEEN :startDate AND :endDate
+            AND church_id = :churchId
+          GROUP BY church_id
+        ) wa ON wa.church_id = c.id
+        WHERE c.id = :churchId
+      `, {
+        replacements: {
+          churchId: req.user.church_id,
+          startOfYear,
+          endOfYear,
+          startDate: startOfYear,
+          endDate: endDateOnly,
+        },
+        type: sequelize.QueryTypes.SELECT,
+      });
+
+      if (!row) {
+        return res.status(404).json({ message: 'Iglesia no encontrada.' });
+      }
+
+      // Normalizar valores numéricos (pg retorna strings en raw queries)
+      return res.json({
+        church_id: row.church_id,
+        church_name: row.church_name,
+        year,
+        faith_decisions_ref_year: year,
+        faith_decisions: parseInt(row.faith_decisions) || 0,
+        avg_weekly_attendance: parseInt(row.avg_weekly_attendance) || 0,
+        events_count: parseInt(row.events_count) || 0,
+        minutes_count: parseInt(row.minutes_count) || 0,
+      });
+    } catch (error) {
+      console.error('[MY SUMMARY] Error:', error.message);
+      return res.status(500).json({
+        message: 'Error al obtener el resumen de la iglesia.',
+        error: error.message,
+      });
+    }
+  },
+
   // GET /api/churches
   // SuperAdmin: lista todas. Admin: solo su iglesia.
   async getAll(req, res) {
