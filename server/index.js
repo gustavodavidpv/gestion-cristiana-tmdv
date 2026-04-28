@@ -68,13 +68,38 @@ app.get('/api/health', (req, res) => {
 // El servidor Express sirve estos archivos estáticos
 if (process.env.NODE_ENV === 'production') {
   const clientBuildPath = path.join(__dirname, '..', 'client', 'build');
-  
+
+  // -------------------------------------------------------------------------
+  // PWA: cabeceras especiales para el service worker y el index.html
+  // -------------------------------------------------------------------------
+  // /service-worker.js debe servirse SIEMPRE fresco (sin cache HTTP) para que
+  // el navegador detecte una versión nueva tras un deploy. Si el SW se cachea,
+  // los usuarios pueden quedarse "trabados" con el SW viejo y NO recibir la
+  // actualización automática que prometemos en el toast del cliente.
+  //
+  // index.html también va con no-cache: es el que referencia los chunks JS
+  // versionados por hash; debe llegar fresco para que la página apunte a los
+  // archivos del build nuevo. Los assets bajo /static/* mantienen el cache
+  // largo por defecto de express.static() porque cambian de URL en cada build.
+  app.use((req, res, next) => {
+    if (req.path === '/service-worker.js' || req.path === '/index.html' || req.path === '/') {
+      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
+    }
+    next();
+  });
+
   // Servir archivos estáticos del build
   app.use(express.static(clientBuildPath));
-  
+
   // Cualquier ruta que NO sea /api/* devuelve index.html
   // Esto permite que React Router maneje las rutas del frontend
   app.get('*', (req, res) => {
+    // Reaplicar no-cache: este handler se usa para rutas SPA (deep links)
+    // que también sirven el index.html — no queremos que un proxy intermedio
+    // las cachee.
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.sendFile(path.join(clientBuildPath, 'index.html'));
   });
 }

@@ -6,7 +6,13 @@ const seed = async () => {
   try {
     console.log('Sembrando datos iniciales...');
 
-    await sequelize.sync({ alter: true });
+    // IMPORTANTE: usamos sync() PLANO (sin alter:true) para evitar que
+    // Sequelize emita ALTER COLUMN sobre TIMESTAMPTZ, lo cual reinterpretaba
+    // los valores existentes contra la timezone configurada (-05:00) y
+    // desplazaba las horas de eventos en cada deploy.
+    // sync() plano es idempotente: solo crea tablas que no existan,
+    // nunca modifica columnas existentes.
+    await sequelize.sync();
 
     await ensureSystemRoles();
     await ensureDefaultRolePermissions();

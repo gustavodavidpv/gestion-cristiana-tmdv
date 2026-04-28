@@ -486,13 +486,25 @@ const runMigrations = async () => {
     }
 
     // =========================================================
-    // PASO 5: Sincronizar modelos con la BD
+    // PASO 5: Sincronizar modelos con la BD (modo seguro)
     //
-    // Como ya creamos las columnas/FK problemáticas en el paso 4,
-    // Sequelize no intentará ALTER COLUMN con REFERENCES (ya existe).
+    // ⚠️ NO usar { alter: true } en producción.
+    //
+    // Razón: con `timezone: '-05:00'` configurado en Sequelize y los campos
+    // start_date/end_date como DataTypes.DATE (TIMESTAMPTZ en Postgres),
+    // un sync({ alter: true }) puede emitir
+    //   ALTER COLUMN start_date TYPE TIMESTAMP WITH TIME ZONE USING ...
+    // lo cual reinterpreta los valores existentes contra la sesión actual y
+    // DESPLAZA las horas de los eventos en cada deploy. Este era el bug
+    // reportado en producción (Render).
+    //
+    // Usamos sync() PLANO: idempotente, sólo CREATE TABLE IF NOT EXISTS.
+    // Las columnas/FK/índices ya se crean explícitamente en el PASO 4 de
+    // este mismo archivo, así que sync() plano es suficiente como red de
+    // seguridad para tablas nuevas que se agreguen al modelo en el futuro.
     // =========================================================
-    console.log('🔄 Sincronizando modelos con BD...');
-    await sequelize.sync({ alter: true });
+    console.log('🔄 Sincronizando modelos con BD (modo seguro, sin alter)...');
+    await sequelize.sync();
     console.log('✅ Sync completado.');
 
     await ensureSystemRoles();
