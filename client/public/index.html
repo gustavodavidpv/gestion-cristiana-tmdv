@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#1565C0" />
     <meta name="description" content="Gestión Cristiana TMDV - Sistema de Gestión de Iglesias" />
+    <!-- PWA: manifest + íconos.
+         %PUBLIC_URL% lo resuelve CRA en build apuntando a la raíz pública. -->
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/apple-touch-icon.png" />
+    <!-- iOS: meta tags para "Add to Home Screen" -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="TMDV" />
     <!-- Fuentes de MUI -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

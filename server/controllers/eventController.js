@@ -20,6 +20,56 @@ const CULTO_ROLE_INCLUDES = [
 ];
 
 /**
+ * Normaliza y valida las fechas de un payload de evento.
+ *
+ * CONTRATO con el frontend: las fechas deben llegar como ISO 8601 con offset
+ * de timezone explícito, p. ej. "2026-04-26T19:00:00-05:00" o sufijo "Z".
+ * Si llegan sin offset (string naivo), Postgres + Sequelize las interpretarán
+ * contra la timezone de la sesión (-05:00), lo cual era una de las causas
+ * históricas de desplazamientos de horas.
+ *
+ * Esta función:
+ *   - Acepta strings ISO o instancias Date.
+ *   - Rechaza valores no parseables (devuelve { error }).
+ *   - No mutua valores ya válidos (sólo asegura que sean Date).
+ *   - Permite que end_date sea opcional (allowNull en el modelo).
+ *
+ * Retorna { error } si algo es inválido, o { data } con start_date/end_date
+ * convertidos a Date listos para Sequelize.
+ */
+function normalizeEventDates(data) {
+  // start_date: requerido (allowNull: false en el modelo)
+  if (data.start_date !== undefined && data.start_date !== null && data.start_date !== '') {
+    const d = data.start_date instanceof Date ? data.start_date : new Date(data.start_date);
+    if (isNaN(d.getTime())) {
+      return { error: 'start_date no es una fecha válida (se esperaba ISO 8601).' };
+    }
+    data.start_date = d;
+  }
+
+  // end_date: opcional. Si viene vacío, se normaliza a null para no romper el tipo.
+  if (data.end_date === '' || data.end_date === undefined) {
+    // Mantener como undefined permite que update() no toque el campo si no se envió
+    if (data.end_date === '') data.end_date = null;
+  } else if (data.end_date !== null) {
+    const d = data.end_date instanceof Date ? data.end_date : new Date(data.end_date);
+    if (isNaN(d.getTime())) {
+      return { error: 'end_date no es una fecha válida (se esperaba ISO 8601).' };
+    }
+    data.end_date = d;
+  }
+
+  // Caso extremo: end_date anterior a start_date → rechazar para evitar datos inconsistentes
+  if (data.start_date instanceof Date && data.end_date instanceof Date) {
+    if (data.end_date.getTime() < data.start_date.getTime()) {
+      return { error: 'end_date no puede ser anterior a start_date.' };
+    }
+  }
+
+  return { data };
+}
+
+/**
  * Sanitiza IDs de roles de culto: '' → null, string → int.
  * Evita errores de FK cuando el frontend envía strings vacíos.
  */
@@ -114,6 +164,12 @@ const eventController = {
       // Sanitizar IDs de roles de culto ('' → null)
       const data = sanitizeCultoRoles({ ...req.body });
 
+      // Validar/normalizar fechas (ISO 8601 con timezone esperado)
+      const dateCheck = normalizeEventDates(data);
+      if (dateCheck.error) {
+        return res.status(400).json({ message: dateCheck.error });
+      }
+
       const event = await Event.create({
         ...data,
         church_id: data.church_id || req.user.church_id,
@@ -136,6 +192,13 @@ const eventController = {
 
       // Sanitizar IDs de roles de culto ('' → null)
       const data = sanitizeCultoRoles({ ...req.body });
+
+      // Validar/normalizar fechas SOLO si se enviaron en el payload.
+      // En update parcial (PATCH-like) no se debe forzar a que vengan ambas.
+      const dateCheck = normalizeEventDates(data);
+      if (dateCheck.error) {
+        return res.status(400).json({ message: dateCheck.error });
+      }
 
       /**
        * Si el tipo de evento cambia de 'Culto' a otro tipo,
