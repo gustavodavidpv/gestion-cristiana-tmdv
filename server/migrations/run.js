@@ -602,6 +602,7 @@ const runMigrations = async () => {
     console.log('   - weekly_attendances (UNIQUE church_id + week_date)');
     console.log('   - minutes, minute_attendees, motions, motion_voters');
     console.log('   - minute_files (archivos de actas)');
+    console.log('   - bible_club_groups, bible_club_students, bible_club_transactions');
 
     process.exit(0);
   } catch (error) {

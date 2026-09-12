@@ -7,7 +7,8 @@
     "start": "node index.js",
     "dev": "nodemon index.js",
     "migrate": "node migrations/run.js",
-    "seed": "node migrations/seed.js"
+    "seed": "node migrations/seed.js",
+    "seed:bible-club": "node migrations/seed-bible-club.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

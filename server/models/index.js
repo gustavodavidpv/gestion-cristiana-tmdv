@@ -16,6 +16,9 @@ const MinisterialPosition = require('./MinisterialPosition');
 const MemberPosition = require('./MemberPosition');
 const MinuteFile = require('./MinuteFile');
 const RolePermission = require('./RolePermission');
+const BibleClubGroup = require('./BibleClubGroup');
+const BibleClubStudent = require('./BibleClubStudent');
+const BibleClubTransaction = require('./BibleClubTransaction');
 
 // =============================================
 // ASOCIACIONES
@@ -152,6 +155,25 @@ Member.hasMany(MemberPosition, { foreignKey: 'member_id', as: 'member_positions'
 MinisterialPosition.hasMany(MemberPosition, { foreignKey: 'position_id' });
 
 // =============================================
+// CLUB BÍBLICO (adolescentes)
+// Church → Group → Student → Transaction
+// =============================================
+Church.hasMany(BibleClubGroup, { foreignKey: 'church_id', as: 'bible_club_groups' });
+BibleClubGroup.belongsTo(Church, { foreignKey: 'church_id', as: 'church' });
+
+BibleClubGroup.hasMany(BibleClubStudent, { foreignKey: 'group_id', as: 'students' });
+BibleClubStudent.belongsTo(BibleClubGroup, { foreignKey: 'group_id', as: 'group' });
+
+Church.hasMany(BibleClubStudent, { foreignKey: 'church_id', as: 'bible_club_students', constraints: false });
+BibleClubStudent.belongsTo(Church, { foreignKey: 'church_id', as: 'church', constraints: false });
+
+BibleClubStudent.hasMany(BibleClubTransaction, { foreignKey: 'student_id', as: 'transactions', onDelete: 'CASCADE' });
+BibleClubTransaction.belongsTo(BibleClubStudent, { foreignKey: 'student_id', as: 'student' });
+
+User.hasMany(BibleClubTransaction, { foreignKey: 'created_by', as: 'bible_club_entries', constraints: false });
+BibleClubTransaction.belongsTo(User, { foreignKey: 'created_by', as: 'creator', constraints: false });
+
+// =============================================
 // PERMISOS DINÁMICOS POR ROL (NUEVO)
 // Cada rol tiene N permisos (module+action → allowed)
 // SuperAdmin no tiene filas — siempre tiene acceso total
@@ -178,4 +200,7 @@ module.exports = {
   MemberPosition,
   MinuteFile,
   RolePermission,
+  BibleClubGroup,
+  BibleClubStudent,
+  BibleClubTransaction,
 };

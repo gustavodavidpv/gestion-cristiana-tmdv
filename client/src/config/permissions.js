@@ -13,6 +13,7 @@ export const MODULES = [
   { key: 'events', label: 'Eventos', actions: ['view', 'create', 'edit', 'delete', 'attendance'] },
   { key: 'weekly_attendance', label: 'Asistencia Semanal', actions: ['view', 'create', 'edit', 'delete'] },
   { key: 'minutes', label: 'Actas', actions: ['view', 'create', 'edit', 'delete'] },
+  { key: 'bible_club', label: 'Club Bíblico', actions: ['view', 'create', 'edit', 'delete'] },
   { key: 'notifications', label: 'Notificaciones', actions: ['view', 'edit'] },
   { key: 'positions', label: 'Cargos Ministeriales', actions: ['view', 'create', 'edit', 'delete'] },
   { key: 'branding', label: 'Branding', actions: ['view', 'edit', 'delete'] },

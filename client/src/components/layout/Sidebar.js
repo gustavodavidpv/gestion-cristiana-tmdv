@@ -26,6 +26,7 @@ import {
   WhatsApp as WhatsAppIcon,
   Security as SecurityIcon,
   AssignmentInd as RolesIcon,
+  MenuBook as MenuBookIcon,
 } from '@mui/icons-material';
 
 /**
@@ -41,6 +42,7 @@ const menuItems = [
   { path: '/events', icon: <EventIcon />, label: 'Eventos', module: 'events' },
   { path: '/attendance', icon: <GroupsIcon />, label: 'Asistencia', module: 'weekly_attendance' },
   { path: '/minutes', icon: <DescriptionIcon />, label: 'Actas', module: 'minutes' },
+  { path: '/bible-club', icon: <MenuBookIcon />, label: 'Club Bíblico', module: 'bible_club' },
   { path: '/notifications', icon: <WhatsAppIcon />, label: 'Notificaciones', module: 'notifications' },
   { path: '/positions', icon: <BadgeIcon />, label: 'Cargos', module: 'positions' },
   { path: '/branding', icon: <PaletteIcon />, label: 'Branding', module: 'branding' },

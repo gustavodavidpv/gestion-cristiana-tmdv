@@ -13,6 +13,7 @@ import Members from './pages/Members';
 import Churches from './pages/Churches';
 import Events from './pages/Events';
 import Minutes from './pages/Minutes';
+import BibleClub from './pages/BibleClub';
 import Users from './pages/Users';
 import WeeklyAttendance from './pages/WeeklyAttendance';
 import MinisterialPositions from './pages/MinisterialPositions';
@@ -112,6 +113,10 @@ function App() {
             <Route
               path="/minutes"
               element={<ProtectedRoute module="minutes"><Minutes /></ProtectedRoute>}
+            />
+            <Route
+              path="/bible-club"
+              element={<ProtectedRoute module="bible_club"><BibleClub /></ProtectedRoute>}
             />
             <Route
               path="/positions"
