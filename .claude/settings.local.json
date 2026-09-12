@@ -32,7 +32,8 @@
       "Bash(find /c/Users/Gustavo Polanco/source/repos/TMDV/gestion-cristiana-tmdv -name README* -o -name *.md)",
       "Bash(grep -r \"DAYS_BEFORE\\\\|NOTIFICATION_DAYS\\\\|notification.*days\" /c/Users/Gustavo Polanco/source/repos/TMDV/gestion-cristiana-tmdv --include=*.js --include=*.jsx --include=*.env*)",
       "Bash(find /c/Users/Gustavo Polanco/source/repos/TMDV/gestion-cristiana-tmdv -name .env* -type f)",
-      "Bash(find /c/Users/Gustavo Polanco/source/repos/TMDV/gestion-cristiana-tmdv/server -name *const* -o -name *config*)"
+      "Bash(find /c/Users/Gustavo Polanco/source/repos/TMDV/gestion-cristiana-tmdv/server -name *const* -o -name *config*)",
+      "Bash(tasklist)"
     ]
   }
 }

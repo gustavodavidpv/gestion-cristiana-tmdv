@@ -84,6 +84,25 @@ const theme = createTheme({
         },
       },
     },
+    // Campos de texto: 16px en móvil para que iOS NO haga zoom al enfocar
+    MuiInputBase: {
+      styleOverrides: {
+        input: {
+          '@media (max-width: 600px)': {
+            fontSize: 16,
+          },
+        },
+      },
+    },
+    MuiSelect: {
+      styleOverrides: {
+        select: {
+          '@media (max-width: 600px)': {
+            fontSize: 16,
+          },
+        },
+      },
+    },
     MuiChip: {
       styleOverrides: {
         root: {

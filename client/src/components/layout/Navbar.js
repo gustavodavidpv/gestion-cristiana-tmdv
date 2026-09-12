@@ -35,6 +35,10 @@ const Navbar = ({ drawerWidth, onMenuClick, isMobile }) => {
         color: 'text.primary',
         borderBottom: '1px solid',
         borderColor: 'divider',
+        // Notch / isla dinámica: la barra baja lo necesario en modo app
+        pt: 'var(--safe-top)',
+        pl: 'var(--safe-left)',
+        pr: 'var(--safe-right)',
       }}
     >
       <Toolbar>

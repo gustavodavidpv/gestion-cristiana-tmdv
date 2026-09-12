@@ -91,7 +91,19 @@ function App() {
           isMobile={isMobile}
         />
 
-        <Box component="main" sx={{ flexGrow: 1, p: { xs: 2, sm: 3 }, mt: '64px' }}>
+        <Box
+          component="main"
+          sx={{
+            flexGrow: 1,
+            p: { xs: 1.5, sm: 3 },
+            // La barra superior es fija: dejamos su alto + el notch
+            mt: 'calc(var(--app-bar-height) + var(--safe-top))',
+            // Espacio para la barra de gestos del teléfono
+            pb: { xs: 'calc(16px + var(--safe-bottom))', sm: 3 },
+            pl: { xs: 'calc(12px + var(--safe-left))', sm: 3 },
+            pr: { xs: 'calc(12px + var(--safe-right))', sm: 3 },
+          }}
+        >
           <Routes>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route

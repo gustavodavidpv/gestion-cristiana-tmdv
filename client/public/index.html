@@ -2,7 +2,10 @@
 <html lang="es">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- viewport-fit=cover: el contenido usa toda la pantalla y respetamos el notch
+         con env(safe-area-inset-*) en CSS. NO bloqueamos el pinch-zoom (accesibilidad);
+         el zoom automático al enfocar un campo se evita con inputs de 16px. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#1565C0" />
     <meta name="description" content="Gestión Cristiana TMDV - Sistema de Gestión de Iglesias" />
     <!-- PWA: manifest + íconos.
@@ -11,6 +14,7 @@
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/apple-touch-icon.png" />
     <!-- iOS: meta tags para "Add to Home Screen" -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="TMDV" />
     <!-- Fuentes de MUI -->
