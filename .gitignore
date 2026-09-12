@@ -10,6 +10,11 @@ client/build/
 .env
 server/.env
 client/.env
+# Credenciales de otros entornos (ej: .env.render con la URL de la BD de producción)
+.env.*
+server/.env.*
+client/.env.*
+!.env.production.example
 
 # Uploads del servidor (ignorar archivos pero mantener estructura)
 server/public/uploads/*

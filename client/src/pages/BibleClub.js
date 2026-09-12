@@ -21,6 +21,7 @@ import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-toastify';
 import ChurchSelector from '../components/layout/ChurchSelector';
 import { DEFAULT_LEVELS, POINT_REASONS, QUICK_POINTS, TYPE_LABELS } from '../config/bibleClub';
+import ScanSheetDialog from '../components/bibleClub/ScanSheetDialog';
 import {
   Box, Paper, Typography, Button, TextField, Select, MenuItem, FormControl,
   InputLabel, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
@@ -35,7 +36,7 @@ import {
   Redeem as RedeemIcon, History as HistoryIcon, Search as SearchIcon,
   PlaylistAddCheck as PlaylistAddCheckIcon, Groups as GroupsIcon,
   Close as CloseIcon, Remove as RemoveIcon, Clear as ClearIcon,
-  MoreVert as MoreVertIcon,
+  MoreVert as MoreVertIcon, DocumentScanner as DocumentScannerIcon,
 } from '@mui/icons-material';
 
 /** Offsets del shell de la app (barra superior fija + notch / barra de gestos) */
@@ -133,6 +134,7 @@ const BibleClubContent = ({ churchId, backButton }) => {
   // Filtros dentro del diálogo de puntos
   const [pointsSearch, setPointsSearch] = useState('');
   const [draftRestored, setDraftRestored] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
 
   const params = useMemo(() => (churchId ? { church_id: churchId } : {}), [churchId]);
 
@@ -355,6 +357,24 @@ const BibleClubContent = ({ churchId, backButton }) => {
       const next = current + amount;
       return { ...prev, values: { ...prev.values, [studentId]: next === 0 ? '' : String(next) } };
     });
+  };
+
+  /**
+   * Vuelca en la hoja los puntos leídos por el OCR.
+   * Se suman a lo que ya estuviera escrito, no lo reemplazan, para poder
+   * escanear y luego seguir ajustando a mano.
+   */
+  const applyScannedPoints = (scanned) => {
+    setPointsDialog((prev) => {
+      if (!prev) return prev;
+      const values = { ...prev.values };
+      for (const [studentId, points] of Object.entries(scanned)) {
+        const current = parseInt(values[studentId], 10) || 0;
+        values[studentId] = String(current + points);
+      }
+      return { ...prev, values };
+    });
+    toast.success(`${Object.keys(scanned).length} participante(s) cargados desde la hoja`);
   };
 
   const pointsSummary = useMemo(() => {
@@ -872,10 +892,22 @@ const BibleClubContent = ({ churchId, backButton }) => {
                 title="Registrar puntos"
                 subtitle={currentGroup?.name}
                 onClose={closePointsDialog}
-                action={<Button type="submit" variant="contained" size="small">Guardar</Button>}
+                action={(
+                  <>
+                    <IconButton onClick={() => setScanOpen(true)} aria-label="Escanear hoja" color="primary">
+                      <DocumentScannerIcon />
+                    </IconButton>
+                    <Button type="submit" variant="contained" size="small">Guardar</Button>
+                  </>
+                )}
               />
             ) : (
-              <DialogTitle>Registrar puntos — {currentGroup?.name}</DialogTitle>
+              <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                <span>Registrar puntos — {currentGroup?.name}</span>
+                <Button size="small" startIcon={<DocumentScannerIcon />} onClick={() => setScanOpen(true)}>
+                  Escanear hoja
+                </Button>
+              </DialogTitle>
             )}
 
             <DialogContent dividers sx={{ p: { xs: 1.5, sm: 3 } }}>
@@ -1004,6 +1036,14 @@ const BibleClubContent = ({ churchId, backButton }) => {
           </form>
         )}
       </Dialog>
+
+      {/* ===== DIÁLOGO: ESCANEAR LA HOJA (OCR en el propio teléfono) ===== */}
+      <ScanSheetDialog
+        open={scanOpen}
+        onClose={() => setScanOpen(false)}
+        students={students.filter((s) => s.is_active)}
+        onApply={applyScannedPoints}
+      />
 
       {/* ===== DIÁLOGO: CANJE ===== */}
       <Dialog open={!!redeemDialog} onClose={() => setRedeemDialog(null)} maxWidth="xs" fullWidth fullScreen={isMobile}>
