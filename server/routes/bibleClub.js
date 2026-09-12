@@ -11,6 +11,9 @@ router.post('/groups', authorizePermission('bible_club', 'create'), bibleClubCon
 router.put('/groups/:id', authorizePermission('bible_club', 'edit'), bibleClubController.updateGroup);
 router.delete('/groups/:id', authorizePermission('bible_club', 'delete'), bibleClubController.deleteGroup);
 
+// ===== Tabla de posiciones en PDF =====
+router.get('/groups/:id/standings.pdf', authorizePermission('bible_club', 'view'), bibleClubController.generateStandings);
+
 // ===== Participantes =====
 router.get('/students', authorizePermission('bible_club', 'view'), bibleClubController.getStudents);
 router.get('/students/:id/transactions', authorizePermission('bible_club', 'view'), bibleClubController.getTransactions);

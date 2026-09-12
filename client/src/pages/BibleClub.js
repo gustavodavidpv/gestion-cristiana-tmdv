@@ -37,6 +37,7 @@ import {
   PlaylistAddCheck as PlaylistAddCheckIcon, Groups as GroupsIcon,
   Close as CloseIcon, Remove as RemoveIcon, Clear as ClearIcon,
   MoreVert as MoreVertIcon, DocumentScanner as DocumentScannerIcon,
+  PictureAsPdf as PictureAsPdfIcon, EmojiEvents as EmojiEventsIcon,
 } from '@mui/icons-material';
 
 /** Offsets del shell de la app (barra superior fija + notch / barra de gestos) */
@@ -135,6 +136,7 @@ const BibleClubContent = ({ churchId, backButton }) => {
   const [pointsSearch, setPointsSearch] = useState('');
   const [draftRestored, setDraftRestored] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   const params = useMemo(() => (churchId ? { church_id: churchId } : {}), [churchId]);
 
@@ -248,6 +250,38 @@ const BibleClubContent = ({ churchId, backButton }) => {
       loadGroups();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Error al eliminar el grupo');
+    }
+  };
+
+  /**
+   * Descarga la tabla de posiciones del salon en PDF (estilo liga de futbol).
+   * El servidor la arma con los mismos datos que muestra la pantalla.
+   */
+  const downloadStandingsPdf = async () => {
+    if (!currentGroup) return;
+    setGroupMenu(false);
+    setDownloadingPdf(true);
+    try {
+      const response = await api.get(`/bible-club/groups/${currentGroup.id}/standings.pdf`, {
+        params: { ...params, include_inactive: showInactive },
+        responseType: 'blob', // Importante: recibir como binario
+      });
+
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Tabla_Posiciones_${currentGroup.name.replace(/[^a-zA-Z0-9]+/g, '_')}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.success('Tabla de posiciones descargada');
+    } catch (error) {
+      toast.error('No se pudo generar el PDF');
+    } finally {
+      setDownloadingPdf(false);
     }
   };
 
@@ -530,6 +564,10 @@ const BibleClubContent = ({ churchId, backButton }) => {
             </IconButton>
           ) : (
             <Stack direction="row" spacing={1}>
+              <Button variant="outlined" color="success" startIcon={<EmojiEventsIcon />}
+                onClick={downloadStandingsPdf} disabled={!selectedGroup || downloadingPdf}>
+                {downloadingPdf ? 'Generando…' : 'Tabla de posiciones'}
+              </Button>
               {canCreate && (
                 <Button variant="contained" startIcon={<PlaylistAddCheckIcon />}
                   onClick={openPointsDialog} disabled={!selectedGroup}>
@@ -852,6 +890,13 @@ const BibleClubContent = ({ churchId, backButton }) => {
           </Box>
         </Box>
         <List sx={{ mt: 1 }}>
+          <ListItemButton onClick={downloadStandingsPdf} disabled={!selectedGroup || downloadingPdf} sx={{ py: 1.5 }}>
+            <ListItemIcon><PictureAsPdfIcon color="success" /></ListItemIcon>
+            <ListItemText
+              primary={downloadingPdf ? 'Generando PDF…' : 'Imprimir tabla de posiciones'}
+              secondary="Podio y ranking del salón, listo para presentar"
+            />
+          </ListItemButton>
           {canCreate && (
             <ListItemButton onClick={openNewStudent} disabled={!selectedGroup} sx={{ py: 1.5 }}>
               <ListItemIcon><AddIcon /></ListItemIcon>

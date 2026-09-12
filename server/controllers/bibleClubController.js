@@ -17,6 +17,7 @@ const {
 } = require('../models');
 const { isSuperAdmin } = require('../middleware/auth');
 const { DEFAULT_LEVELS, POINT_REASONS, normalizeLevels, computeLevel } = require('../config/bibleClub');
+const { generateStandingsPdf } = require('../utils/bibleClubPdf');
 
 /** Resuelve la iglesia sobre la que opera el request (SuperAdmin puede elegir) */
 const resolveChurchId = (req, explicit) => {
@@ -80,6 +81,96 @@ const loadRedeemedItems = async (studentIds) => {
     if (r.item) items[r.student_id].push({ item: r.item, date: r.activity_date });
   }
   return items;
+};
+
+/**
+ * Puntos que sumo cada participante en la ultima jornada del salon, es
+ * decir, la fecha mas reciente en la que se otorgaron puntos.
+ * Es lo que en la tabla se muestra como "+125" al lado del jugador.
+ *
+ * @param {number[]} studentIds
+ * @returns {Promise<{date: string|null, total: number, byStudent: Object}>}
+ */
+const loadLastRound = async (studentIds) => {
+  const empty = { date: null, total: 0, byStudent: {} };
+  if (!studentIds.length) return empty;
+
+  const [latest] = await BibleClubTransaction.findAll({
+    where: { student_id: { [Op.in]: studentIds }, type: 'earn' },
+    attributes: [[fn('MAX', col('activity_date')), 'last_date']],
+    raw: true,
+  });
+  const date = latest && latest.last_date;
+  if (!date) return empty;
+
+  const rows = await BibleClubTransaction.findAll({
+    where: {
+      student_id: { [Op.in]: studentIds },
+      activity_date: date,
+      points: { [Op.gt]: 0 },
+    },
+    attributes: ['student_id', [fn('SUM', col('points')), 'points']],
+    group: ['student_id'],
+    raw: true,
+  });
+
+  const byStudent = {};
+  let total = 0;
+  for (const r of rows) {
+    const points = parseInt(r.points, 10) || 0;
+    byStudent[r.student_id] = points;
+    total += points;
+  }
+
+  return { date: String(date).split('T')[0], total, byStudent };
+};
+
+/**
+ * Arma la tabla de posiciones de un salón: participantes con su saldo,
+ * total ganado, canjes y nivel alcanzado, ordenados de mayor a menor saldo.
+ * La usan tanto el listado de la app como el PDF, para que nunca discrepen.
+ *
+ * @param {Object} params
+ * @param {number} params.churchId
+ * @param {number|string} [params.groupId]
+ * @param {boolean} [params.includeInactive]
+ * @returns {Promise<Array>} Participantes enriquecidos y ordenados
+ */
+const buildStandings = async ({ churchId, groupId, includeInactive = false }) => {
+  const where = {};
+  if (churchId) where.church_id = churchId;
+  if (groupId) where.group_id = parseInt(groupId, 10);
+  if (!includeInactive) where.is_active = true;
+
+  const students = await BibleClubStudent.findAll({
+    where,
+    include: [{ model: BibleClubGroup, as: 'group', attributes: ['id', 'name', 'levels'] }],
+    order: [['full_name', 'ASC']],
+  });
+
+  const ids = students.map((s) => s.id);
+  const [totals, items, lastRound] = await Promise.all([
+    loadTotals(ids), loadRedeemedItems(ids), loadLastRound(ids),
+  ]);
+
+  const ranked = students
+    .map((s) => {
+      const t = totals[s.id] || { balance: 0, earned: 0, redeemed: 0, redemptions: 0 };
+      return {
+        ...s.toJSON(),
+        balance: t.balance,
+        earned: t.earned,
+        redeemed: t.redeemed,
+        redemptions: t.redemptions,
+        last_round: lastRound.byStudent[s.id] || 0,
+        level: computeLevel(t.earned, s.group?.levels),
+        items: items[s.id] || [],
+      };
+    })
+    // Ranking por saldo descendente (igual que la hoja "Saldo por participante")
+    .sort((a, b) => b.balance - a.balance || a.full_name.localeCompare(b.full_name));
+
+  return { students: ranked, lastRound };
 };
 
 const bibleClubController = {
@@ -200,38 +291,13 @@ const bibleClubController = {
       const churchId = resolveChurchId(req);
       const { group_id, include_inactive } = req.query;
 
-      const where = {};
-      if (churchId) where.church_id = churchId;
-      if (group_id) where.group_id = parseInt(group_id, 10);
-      if (include_inactive !== 'true') where.is_active = true;
-
-      const students = await BibleClubStudent.findAll({
-        where,
-        include: [{ model: BibleClubGroup, as: 'group', attributes: ['id', 'name', 'levels'] }],
-        order: [['full_name', 'ASC']],
+      const { students, lastRound } = await buildStandings({
+        churchId,
+        groupId: group_id,
+        includeInactive: include_inactive === 'true',
       });
 
-      const ids = students.map((s) => s.id);
-      const [totals, items] = await Promise.all([loadTotals(ids), loadRedeemedItems(ids)]);
-
-      const enriched = students.map((s) => {
-        const t = totals[s.id] || { balance: 0, earned: 0, redeemed: 0, redemptions: 0 };
-        const level = computeLevel(t.earned, s.group?.levels);
-        return {
-          ...s.toJSON(),
-          balance: t.balance,
-          earned: t.earned,
-          redeemed: t.redeemed,
-          redemptions: t.redemptions,
-          level,
-          items: items[s.id] || [],
-        };
-      });
-
-      // Ranking por saldo descendente (igual que la hoja "Saldo por participante")
-      enriched.sort((a, b) => b.balance - a.balance || a.full_name.localeCompare(b.full_name));
-
-      res.json({ students: enriched });
+      res.json({ students, last_round: lastRound });
     } catch (error) {
       res.status(500).json({ message: 'Error al obtener participantes.', error: error.message });
     }
@@ -477,6 +543,53 @@ const bibleClubController = {
       res.json({ message: 'Movimiento actualizado.', transaction: tx });
     } catch (error) {
       res.status(500).json({ message: 'Error al actualizar movimiento.', error: error.message });
+    }
+  },
+
+  // =========================================================
+  // TABLA DE POSICIONES EN PDF
+  // =========================================================
+
+  // GET /api/bible-club/groups/:id/standings.pdf
+  async generateStandings(req, res) {
+    try {
+      const group = await BibleClubGroup.findByPk(req.params.id, {
+        include: [{ model: Church, as: 'church', attributes: ['id', 'name'] }],
+      });
+      if (!group) return res.status(404).json({ message: 'Grupo no encontrado.' });
+      if (!canAccess(req, group)) return res.status(403).json({ message: 'No tienes acceso a este grupo.' });
+
+      const { students, lastRound } = await buildStandings({
+        churchId: group.church_id,
+        groupId: group.id,
+        includeInactive: req.query.include_inactive === 'true',
+      });
+
+      if (!students.length) {
+        return res.status(400).json({ message: 'El salón no tiene participantes para imprimir.' });
+      }
+
+      // Nombre de archivo sin acentos ni signos: "Salón A" -> "Salon_A"
+      const safeName = group.name
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+      const fileName = `Tabla_Posiciones_${safeName}.pdf`;
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+
+      const pdf = generateStandingsPdf({
+        groupName: group.name,
+        churchName: group.church?.name || 'Club Bíblico',
+        teacher: group.teacher,
+        levels: normalizeLevels(group.levels),
+        students,
+        lastRound,
+      });
+      pdf.pipe(res);
+    } catch (error) {
+      res.status(500).json({ message: 'Error al generar el PDF.', error: error.message });
     }
   },
 
