@@ -177,8 +177,15 @@ class Masthead extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Row(
             children: [
-              Expanded(child: Text(left, style: AppText.base(size: 13, color: AppColors.neutral800))),
-              DefaultTextStyle(style: AppText.base(size: 13, color: AppColors.neutral800), child: right),
+              Text(left, style: AppText.base(size: 13, color: AppColors.neutral800)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: DefaultTextStyle(
+                  style: AppText.base(size: 13, color: AppColors.neutral800),
+                  textAlign: TextAlign.right,
+                  child: right,
+                ),
+              ),
             ],
           ),
         ),

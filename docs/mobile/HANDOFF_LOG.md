@@ -5,6 +5,22 @@ Plantilla y protocolo: [PLAN_APP_MOVIL.md](PLAN_APP_MOVIL.md) §0.2 y §9.1.
 
 ---
 
+## [T4.1 + T4.3 + T4.4 parcial] Pruebas automáticas de la app — 2026-09-25
+
+- **Agente:** QA (sesión principal de Claude Code)
+- **Rama / PR:** `mobile/flutter-app-v1` · https://github.com/gustavodavidpv/gestion-cristiana-tmdv/pull/8
+- **Qué se hizo:** 47 pruebas (`flutter test`, ~15 s, sin emulador). Backend simulado con los contratos y la autorización por ruta de `server/`; la app completa se monta y se recorre como un usuario. Suites: acceso y sesión (12), matriz de 6 roles (6), flujos de trabajo (11), fuente al 130% (2), contrato de permisos contra `server/config/permissions.js` (1), unitarias (15). CI en `.github/workflows/mobile.yml`.
+- **Bugs encontrados y corregidos por las pruebas:**
+  - Al cerrar sesión o expirar el token, las pestañas se reconstruían sin usuario antes de ir al Login → pantalla de error momentánea (`Null check operator`).
+  - El esqueleto de carga se desbordaba en pantallas bajas (Club: 504 pt en 437 pt).
+  - La barra de pestañas se desbordaba con la fuente del sistema al 130% (ahora sus etiquetas no escalan, como en iOS).
+  - `Masthead` del Login y `LinkButton` se desbordaban con textos largos.
+- **Hallazgos documentados (no son bugs de la app):**
+  - Con los DEFAULTS, `Asistencia` ve el Club (tiene `bible_club.view/create`) y no puede reemplazar una semana ya registrada (`weekly_attendance.edit = false` → 403, la app muestra el mensaje).
+  - `Secretaría` no tiene `positions.view`: la app oculta el campo de cargo y no envía `position_ids` (conserva el valor).
+- **Lo que NO se hizo / deuda:** E2E en dispositivo real contra el backend (T4.2, Maestro o `integration_test`); pruebas de rendimiento/red pobre (resto de T4.4). El backend simulado no sustituye probar el servidor real: la matriz "la API rechaza si se fuerza" de T4.3 sigue pendiente del lado servidor.
+- **Cómo verificar:** `cd mobile && flutter analyze && flutter test`.
+
 ## [T2.x + T3.x] App Flutter: fundaciones y módulos MVP — 2026-09-24
 
 - **Agente:** Mobile (sesión principal de Claude Code)

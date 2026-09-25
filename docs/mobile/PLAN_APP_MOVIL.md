@@ -84,9 +84,9 @@
 | T3.6 | Club Bíblico | Mobile | T2.x | ◐ |
 | T3.7 | Actas (lectura, descarga, adjuntar) | Mobile | T2.6 | ◐ |
 | T3.8 | Perfil, ajustes y acerca de | Mobile | T2.3, T1.6 | ◐ |
-| T4.1 | Pruebas unitarias y de contrato | QA | T3.x | ☐ |
+| T4.1 | Pruebas unitarias y de contrato | QA | T3.x | ◐ |
 | T4.2 | E2E por rol (Maestro) | QA | T3.x | ☐ |
-| T4.3 | Matriz de permisos verificada en dispositivo | QA | T3.x | ☐ |
+| T4.3 | Matriz de permisos verificada en dispositivo | QA | T3.x | ◐ |
 | T4.4 | Accesibilidad, rendimiento y red pobre | QA | T3.x | ☐ |
 | T4.5 | Checklist pre-review (Apple 4.2/2.1/5.1.1) | QA | T4.1–T4.4 | ☐ |
 | T5.1 | Icono, splash y paleta final | Release | T0.1 | ☐ |

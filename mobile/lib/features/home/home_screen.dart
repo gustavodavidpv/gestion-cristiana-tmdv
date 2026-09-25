@@ -35,7 +35,8 @@ final homeYearProvider = NotifierProvider<HomeYear, int>(HomeYear.new);
 
 final homeDataProvider = FutureProvider.family<HomeData, int>((ref, year) async {
   final repo = ref.read(repoProvider);
-  final user = ref.watch(currentUserProvider)!;
+  final user = ref.watch(currentUserProvider);
+  if (user == null) return const HomeData(summary: YearSummary());
   final perms = ref.watch(permissionsProvider);
   final scope = ref.watch(churchQueryProvider);
   final selected = ref.watch(selectedChurchProvider).id;
@@ -96,7 +97,8 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(currentUserProvider)!;
+    final user = ref.watch(currentUserProvider);
+    if (user == null) return const SizedBox.shrink(); // cerrando sesión
     final year = ref.watch(homeYearProvider);
     final data = ref.watch(homeDataProvider(year));
     final currentYear = PanamaTime.now().year;

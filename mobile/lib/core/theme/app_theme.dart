@@ -7,6 +7,10 @@ import 'tokens.dart';
 class AppText {
   AppText._();
 
+  /// En pruebas se desactiva para no descargar la fuente; se usa [fallbackFamily].
+  static bool useGoogleFonts = true;
+  static String? fallbackFamily;
+
   static TextStyle base({
     double size = 16,
     FontWeight weight = FontWeight.w400,
@@ -14,15 +18,19 @@ class AppText {
     double? height,
     double? letterSpacing,
     FontStyle? fontStyle,
-  }) =>
-      GoogleFonts.sourceSerif4(
-        fontSize: size,
-        fontWeight: weight,
-        color: color,
-        height: height,
-        letterSpacing: letterSpacing,
-        fontStyle: fontStyle,
-      );
+  }) {
+    if (!useGoogleFonts) {
+      return TextStyle(fontFamily: fallbackFamily, fontSize: size, fontWeight: weight, color: color, height: height, letterSpacing: letterSpacing, fontStyle: fontStyle);
+    }
+    return GoogleFonts.sourceSerif4(
+      fontSize: size,
+      fontWeight: weight,
+      color: color,
+      height: height,
+      letterSpacing: letterSpacing,
+      fontStyle: fontStyle,
+    );
+  }
 
   /// Título de pantalla 34/1.05, 600, tracking −0.02em.
   static TextStyle title([double size = 34]) =>
@@ -40,7 +48,7 @@ class AppText {
 }
 
 ThemeData buildAppTheme() {
-  final textTheme = GoogleFonts.sourceSerif4TextTheme().apply(
+  final textTheme = (AppText.useGoogleFonts ? GoogleFonts.sourceSerif4TextTheme() : const TextTheme()).apply(
     bodyColor: AppColors.text,
     displayColor: AppColors.text,
   );

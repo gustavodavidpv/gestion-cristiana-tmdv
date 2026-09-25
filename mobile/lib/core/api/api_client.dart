@@ -14,7 +14,7 @@ import 'api_exception.dart';
 /// - Ante un 401: si hay refresh token (T1.3) intenta UN refresh compartido y
 ///   reintenta; si no, notifica sesión expirada con [onSessionExpired].
 class ApiClient {
-  ApiClient(this._store, {required this.appVersion}) {
+  ApiClient(this._store, {required this.appVersion, HttpClientAdapter? adapter}) {
     _dio = Dio(BaseOptions(
       baseUrl: Env.apiUrl,
       connectTimeout: const Duration(seconds: 15),
@@ -25,6 +25,8 @@ class ApiClient {
         'X-Platform': Platform.isIOS ? 'ios' : 'android',
       },
     ));
+    // Las pruebas inyectan un backend simulado aquí.
+    if (adapter != null) _dio.httpClientAdapter = adapter;
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) {
         final token = _store.token;

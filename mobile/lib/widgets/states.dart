@@ -135,7 +135,9 @@ class SkeletonList extends StatelessWidget {
     return _Pulse(
       child: LayoutBuilder(builder: (context, c) {
         final w = c.maxWidth - padding.horizontal - (avatar ? 54 : 0);
-        return Padding(
+        // Desplazable pero inmóvil: en pantallas bajas las filas se recortan en vez de desbordar.
+        return SingleChildScrollView(
+          physics: const NeverScrollableScrollPhysics(),
           padding: padding,
           child: Column(
             children: [

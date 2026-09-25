@@ -50,8 +50,21 @@ cd android && gradlew.bat assembleDebug --offline
 
 ```bash
 flutter analyze
-flutter test
+flutter test          # 47 pruebas, ~15 s, sin emulador ni base de datos
 ```
+
+| Suite | Qué verifica |
+|---|---|
+| `test/app/auth_flow_test.dart` | Login correcto/incorrecto, cuenta desactivada, sin red, recuperar contraseña, sesión recordada, token vencido (al abrir y en uso), arranque sin red con perfil guardado, cerrar sesión, versión mínima |
+| `test/app/roles_test.dart` | Matriz de permisos (T4.3) para los 6 roles con los DEFAULTS del servidor: pestañas, FAB, ⋮, editar/eliminar, registrar asistencia, visitante, club editable, módulos de "Más", y **ninguna llamada a un endpoint que el rol no puede usar** |
+| `test/app/flows_test.dart` | Registrar asistencia (reemplazo, decisiones, búsqueda, visitante, sin red), crear evento (ISO `-05:00`), crear/editar miembro (degradación sin cargos), Club (+1, mantener +5, lote, canje), asistencia semanal (teclado, PUT al reemplazar, 403 para Asistencia) |
+| `test/app/accessibility_test.dart` | Fuente del sistema al 130% sin desbordes (T4.4) |
+| `test/contract/permissions_sync_test.dart` | La copia de permisos de las pruebas coincide con `server/config/permissions.js` (usa `node`) |
+| `test/*_test.dart` | Hora de Panamá, formatos en español, orden de pestañas |
+
+Las pruebas de `test/app/` montan la app completa contra un **backend simulado**
+(`test/support/fake_backend.dart`) que replica rutas, forma de las respuestas, paginación y la
+autorización por ruta del servidor. El CI (`.github/workflows/mobile.yml`) corre `analyze` + `test` en cada PR que toque `mobile/`.
 
 ## Estructura
 

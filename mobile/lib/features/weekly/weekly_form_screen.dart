@@ -89,7 +89,7 @@ class _WeeklyFormScreenState extends ConsumerState<WeeklyFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final user = ref.watch(currentUserProvider)!;
+    final user = ref.watch(currentUserProvider);
     final online = ref.watch(isOnlineProvider);
     final qtyErr = _tried && _qty.isEmpty;
     final nextDate = _date.add(const Duration(days: 7));
@@ -145,7 +145,7 @@ class _WeeklyFormScreenState extends ConsumerState<WeeklyFormScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   child: Row(children: [
                     Expanded(child: Text('Registrado por', style: AppText.base(size: 15, color: AppColors.neutral800))),
-                    Text('${user.firstName} · ${user.roleName}', style: AppText.base(size: 15, weight: FontWeight.w600)),
+                    Text(user == null ? '—' : '${user.firstName} · ${user.roleName}', style: AppText.base(size: 15, weight: FontWeight.w600)),
                   ]),
                 ),
                 if (_error != null) Text(_error!, style: AppText.base(size: 15, color: AppColors.magenta700)),

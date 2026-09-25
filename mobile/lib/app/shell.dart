@@ -20,16 +20,32 @@ class TabDef {
 }
 
 const tabInicio = TabDef(0, 'Inicio', PhosphorIconsDuotone.house, 'dashboard');
-const tabMiembros = TabDef(1, 'Miembros', PhosphorIconsDuotone.users, 'members');
-const tabEventos = TabDef(2, 'Eventos', PhosphorIconsDuotone.calendarBlank, 'events');
-const tabClub = TabDef(3, 'Club', PhosphorIconsDuotone.bookOpenText, 'bible_club');
+const tabMiembros = TabDef(
+  1,
+  'Miembros',
+  PhosphorIconsDuotone.users,
+  'members',
+);
+const tabEventos = TabDef(
+  2,
+  'Eventos',
+  PhosphorIconsDuotone.calendarBlank,
+  'events',
+);
+const tabClub = TabDef(
+  3,
+  'Club',
+  PhosphorIconsDuotone.bookOpenText,
+  'bible_club',
+);
 const tabMas = TabDef(4, 'Más', PhosphorIconsDuotone.dotsThreeCircle, null);
 
 /// Pestañas visibles según el mapa de permisos (nunca por nombre de rol).
 /// Si el usuario registra asistencia pero no administra miembros, Eventos va
 /// antes que Miembros (su tarea principal), como en el diseño para "Asistencia".
 List<TabDef> visibleTabs(Permissions p) {
-  final eventsFirst = p.can('events', 'attendance') && !p.can('members', 'create');
+  final eventsFirst =
+      p.can('events', 'attendance') && !p.can('members', 'create');
   final ordered = eventsFirst
       ? [tabInicio, tabEventos, tabMiembros, tabClub, tabMas]
       : [tabInicio, tabMiembros, tabEventos, tabClub, tabMas];
@@ -42,6 +58,9 @@ class AppShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Al cerrar sesión o expirar, no reconstruir las pestañas sin usuario:
+    // el router lleva al Login en el siguiente cuadro.
+    if (ref.watch(currentUserProvider) == null) return const Scaffold();
     final perms = ref.watch(permissionsProvider);
     final tabs = visibleTabs(perms);
     final current = navigationShell.currentIndex;
@@ -60,23 +79,31 @@ class AppShell extends ConsumerWidget {
               ),
             ),
       bottomNavigationBar: Container(
+        key: const Key('tabBar'),
         color: AppColors.surface,
         padding: const EdgeInsets.symmetric(horizontal: 4),
         child: SafeArea(
           top: false,
-          child: SizedBox(
-            height: 60,
-            child: Row(
-              children: [
-                for (final t in tabs)
-                  Expanded(
-                    child: _TabButton(
-                      tab: t,
-                      active: t.branch == current,
-                      onTap: () => navigationShell.goBranch(t.branch, initialLocation: t.branch == current),
+          // Como en iOS, las etiquetas de la barra no crecen con el tamaño de
+          // letra del sistema (el contenido de las pantallas sí).
+          child: MediaQuery.withNoTextScaling(
+            child: SizedBox(
+              height: 60,
+              child: Row(
+                children: [
+                  for (final t in tabs)
+                    Expanded(
+                      child: _TabButton(
+                        tab: t,
+                        active: t.branch == current,
+                        onTap: () => navigationShell.goBranch(
+                          t.branch,
+                          initialLocation: t.branch == current,
+                        ),
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -86,7 +113,11 @@ class AppShell extends ConsumerWidget {
 }
 
 class _TabButton extends StatelessWidget {
-  const _TabButton({required this.tab, required this.active, required this.onTap});
+  const _TabButton({
+    required this.tab,
+    required this.active,
+    required this.onTap,
+  });
   final TabDef tab;
   final bool active;
   final VoidCallback onTap;
@@ -107,7 +138,14 @@ class _TabButton extends StatelessWidget {
           children: [
             Ic(tab.icon, size: 26, color: color),
             const SizedBox(height: 2),
-            Text(tab.label, style: AppText.base(size: 13, color: color, weight: active ? FontWeight.w600 : FontWeight.w400)),
+            Text(
+              tab.label,
+              style: AppText.base(
+                size: 13,
+                color: color,
+                weight: active ? FontWeight.w600 : FontWeight.w400,
+              ),
+            ),
           ],
         ),
       ),

@@ -185,7 +185,7 @@ class LinkButton extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             if (icon != null) ...[Ic(icon!, size: 20, color: color), const SizedBox(width: 8)],
-            Text(label, style: AppText.base(size: fontSize, color: color)),
+            Flexible(child: Text(label, overflow: TextOverflow.ellipsis, style: AppText.base(size: fontSize, color: color))),
           ],
         ),
       ),
