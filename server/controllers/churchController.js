@@ -1,6 +1,6 @@
 const { Church, Mission, WhiteField, Member } = require('../models');
 const { isSuperAdmin } = require('../middleware/auth');
-const { sequelize } = require('../config/database');
+const { sequelize, qt } = require('../config/database');
 
 const churchController = {
   /**
@@ -26,8 +26,9 @@ const churchController = {
       }
 
       const year = parseInt(req.query.year) || new Date().getFullYear();
-      const startOfYear = `${year}-01-01`;
-      const endOfYear = `${year}-12-31 23:59:59`;
+      // Offset explícito de Panamá: SQL Server asume UTC si el literal no lo trae
+      const startOfYear = `${year}-01-01T00:00:00-05:00`;
+      const endOfYear = `${year}-12-31T23:59:59-05:00`;
 
       // Query única con LEFT JOINs para eficiencia (evita N+1)
       const stats = await sequelize.query(`
@@ -44,30 +45,30 @@ const churchController = {
           COALESCE(mn.minutes_count, 0) AS minutes_count,
           COALESCE(fd.faith_decisions, 0) AS faith_decisions,
           COALESCE(wa.avg_attendance, 0) AS avg_weekly_attendance
-        FROM churches c
+        FROM ${qt('churches')} c
         LEFT JOIN (
           SELECT church_id, COUNT(*) AS events_count
-          FROM events
+          FROM ${qt('events')}
           WHERE start_date BETWEEN :startOfYear AND :endOfYear
           GROUP BY church_id
         ) ev ON ev.church_id = c.id
         LEFT JOIN (
           SELECT church_id, COUNT(*) AS minutes_count
-          FROM minutes
+          FROM ${qt('minutes')}
           WHERE meeting_date BETWEEN :startDate AND :endDate
           GROUP BY church_id
         ) mn ON mn.church_id = c.id
         LEFT JOIN (
           SELECT e.church_id, COUNT(*) AS faith_decisions
-          FROM event_attendees ea
-          JOIN events e ON ea.event_id = e.id
-          WHERE ea.made_faith_decision = true
+          FROM ${qt('event_attendees')} ea
+          JOIN ${qt('events')} e ON ea.event_id = e.id
+          WHERE ea.made_faith_decision = :isTrue
             AND e.start_date BETWEEN :startOfYear AND :endOfYear
           GROUP BY e.church_id
         ) fd ON fd.church_id = c.id
         LEFT JOIN (
-          SELECT church_id, ROUND(AVG(attendance_count)) AS avg_attendance
-          FROM weekly_attendances
+          SELECT church_id, ROUND(AVG(attendance_count * 1.0), 0) AS avg_attendance
+          FROM ${qt('weekly_attendances')}
           WHERE week_date BETWEEN :startDate AND :endDate
           GROUP BY church_id
         ) wa ON wa.church_id = c.id
@@ -76,8 +77,9 @@ const churchController = {
         replacements: {
           startOfYear,
           endOfYear,
-          startDate: startOfYear,
+          startDate: `${year}-01-01`,
           endDate: `${year}-12-31`,
+          isTrue: true,
         },
         type: sequelize.QueryTypes.SELECT,
       });
@@ -137,8 +139,9 @@ const churchController = {
         return res.status(400).json({ message: 'Año fuera de rango válido.' });
       }
 
-      const startOfYear = `${year}-01-01`;
-      const endOfYear = `${year}-12-31 23:59:59`;
+      // Offset explícito de Panamá: SQL Server asume UTC si el literal no lo trae
+      const startOfYear = `${year}-01-01T00:00:00-05:00`;
+      const endOfYear = `${year}-12-31T23:59:59-05:00`;
       const endDateOnly = `${year}-12-31`;
 
       // Query única con LEFT JOINs para calcular todas las métricas del año
@@ -151,33 +154,33 @@ const churchController = {
           COALESCE(mn.minutes_count, 0)     AS minutes_count,
           COALESCE(fd.faith_decisions, 0)   AS faith_decisions,
           COALESCE(wa.avg_attendance, 0)    AS avg_weekly_attendance
-        FROM churches c
+        FROM ${qt('churches')} c
         LEFT JOIN (
           SELECT church_id, COUNT(*) AS events_count
-          FROM events
+          FROM ${qt('events')}
           WHERE start_date BETWEEN :startOfYear AND :endOfYear
             AND church_id = :churchId
           GROUP BY church_id
         ) ev ON ev.church_id = c.id
         LEFT JOIN (
           SELECT church_id, COUNT(*) AS minutes_count
-          FROM minutes
+          FROM ${qt('minutes')}
           WHERE meeting_date BETWEEN :startDate AND :endDate
             AND church_id = :churchId
           GROUP BY church_id
         ) mn ON mn.church_id = c.id
         LEFT JOIN (
           SELECT e.church_id, COUNT(*) AS faith_decisions
-          FROM event_attendees ea
-          JOIN events e ON ea.event_id = e.id
-          WHERE ea.made_faith_decision = true
+          FROM ${qt('event_attendees')} ea
+          JOIN ${qt('events')} e ON ea.event_id = e.id
+          WHERE ea.made_faith_decision = :isTrue
             AND e.start_date BETWEEN :startOfYear AND :endOfYear
             AND e.church_id = :churchId
           GROUP BY e.church_id
         ) fd ON fd.church_id = c.id
         LEFT JOIN (
-          SELECT church_id, ROUND(AVG(attendance_count)) AS avg_attendance
-          FROM weekly_attendances
+          SELECT church_id, ROUND(AVG(attendance_count * 1.0), 0) AS avg_attendance
+          FROM ${qt('weekly_attendances')}
           WHERE week_date BETWEEN :startDate AND :endDate
             AND church_id = :churchId
           GROUP BY church_id
@@ -188,8 +191,9 @@ const churchController = {
           churchId: req.user.church_id,
           startOfYear,
           endOfYear,
-          startDate: startOfYear,
+          startDate: `${year}-01-01`,
           endDate: endDateOnly,
+          isTrue: true,
         },
         type: sequelize.QueryTypes.SELECT,
       });

@@ -2,6 +2,7 @@
  * run.js - Script de migraciones para Gestión Cristiana TMDV
  * 
  * Ejecuta: npm run db:migrate (o: cd server && node migrations/run.js)
+ * Con DB_DIALECT=mssql delega en migrations/mssql/run-mssql.js.
  * 
  * PASOS:
  * 1. Limpiar duplicados en event_attendees
@@ -17,6 +18,7 @@
  * Solución: crear la columna y FK manualmente antes del sync.
  */
 const { sequelize } = require('../models');
+const { isMssql } = require('../config/database');
 const { ensureSystemRoles, ensureDefaultRolePermissions } = require('../utils/roleSetup');
 
 const runMigrations = async () => {
@@ -611,4 +613,9 @@ const runMigrations = async () => {
   }
 };
 
-runMigrations();
+// SQL Server tiene su propio flujo: los pasos de arriba son SQL específico de Postgres
+if (isMssql) {
+  require('./mssql/run-mssql').runMssqlMigrations();
+} else {
+  runMigrations();
+}

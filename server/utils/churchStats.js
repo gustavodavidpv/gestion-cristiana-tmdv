@@ -13,7 +13,7 @@
 
 const { EventAttendee, Event, Member, WeeklyAttendance } = require('../models');
 const { Op } = require('sequelize');
-const { sequelize } = require('../config/database');
+const { sequelize, qt } = require('../config/database');
 
 /**
  * Recalcula el total de decisiones de fe de una iglesia para un año dado.
@@ -68,9 +68,9 @@ async function recalculateAvgWeeklyAttendance(church) {
     // Calcular el promedio directamente con SQL para eficiencia
     const [result] = await sequelize.query(`
       SELECT 
-        COALESCE(ROUND(AVG(attendance_count)), 0) as avg_attendance,
+        COALESCE(ROUND(AVG(attendance_count * 1.0), 0), 0) as avg_attendance,
         COUNT(*) as total_weeks
-      FROM weekly_attendances 
+      FROM ${qt('weekly_attendances')}
       WHERE church_id = :churchId
     `, {
       replacements: { churchId: church.id },
@@ -125,9 +125,9 @@ async function recalculateChurchRoleCounts(church) {
       SELECT
         COALESCE(mp.name, m.church_role) AS role_name,
         COUNT(DISTINCT m.id) AS count
-      FROM members m
-      LEFT JOIN member_positions mpos ON m.id = mpos.member_id
-      LEFT JOIN ministerial_positions mp ON mpos.position_id = mp.id
+      FROM ${qt('members')} m
+      LEFT JOIN ${qt('member_positions')} mpos ON m.id = mpos.member_id
+      LEFT JOIN ${qt('ministerial_positions')} mp ON mpos.position_id = mp.id
       WHERE m.church_id = :churchId
         AND (m.church_role IS NOT NULL OR mpos.position_id IS NOT NULL)
       GROUP BY COALESCE(mp.name, m.church_role)

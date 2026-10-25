@@ -1,6 +1,6 @@
 const { Member, Church, MinisterialPosition, MemberPosition } = require('../models');
 const { Op } = require('sequelize');
-const { sequelize } = require('../config/database');
+const { sequelize, isMssql, qt, iLike } = require('../config/database');
 const { recalculateChurchRoleCounts, recalculateMembershipCount } = require('../utils/churchStats');
 const { isSuperAdmin, applyTenantFilter } = require('../middleware/auth');
 
@@ -129,9 +129,11 @@ async function saveMemberPositions(memberId, positionIds) {
   await MemberPosition.destroy({ where: { member_id: memberId } });
   // Crear nuevos si hay alguno
   if (positionIds && positionIds.length > 0) {
+    // Sin repetidos: SQL Server no soporta ignoreDuplicates en bulkCreate
+    const uniqueIds = [...new Set(positionIds.map(String))];
     await MemberPosition.bulkCreate(
-      positionIds.map(pid => ({ member_id: memberId, position_id: pid })),
-      { ignoreDuplicates: true }
+      uniqueIds.map(pid => ({ member_id: memberId, position_id: pid })),
+      isMssql ? {} : { ignoreDuplicates: true }
     );
   }
 }
@@ -151,9 +153,9 @@ const memberController = {
       if (baptized !== undefined) where.baptized = baptized === 'true';
       if (search) {
         where[Op.or] = [
-          { first_name: { [Op.iLike]: `%${search}%` } },
-          { last_name: { [Op.iLike]: `%${search}%` } },
-          { email: { [Op.iLike]: `%${search}%` } },
+          { first_name: { [iLike]: `%${search}%` } },
+          { last_name: { [iLike]: `%${search}%` } },
+          { email: { [iLike]: `%${search}%` } },
         ];
       }
 
@@ -191,7 +193,7 @@ const memberController = {
           where.id = {
             ...(where.id || {}),
             [Op.in]: sequelize.literal(
-              `(SELECT member_id FROM member_positions WHERE position_id IN (${ids.join(',')}))`
+              `(SELECT member_id FROM ${qt('member_positions')} WHERE position_id IN (${ids.join(',')}))`
             ),
           };
         }
