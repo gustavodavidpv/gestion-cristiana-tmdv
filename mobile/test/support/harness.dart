@@ -75,6 +75,9 @@ Future<void> settle(WidgetTester tester, [int frames = 30]) async {
 Future<void> login(WidgetTester tester, {String email = 'gustavo@iglesiacentral.pa', String password = 'secreto'}) async {
   await tester.enterText(find.byType(TextField).at(0), email);
   await tester.enterText(find.byType(TextField).at(1), password);
+  // Con fuente grande el botón queda bajo el pliegue: se desplaza como lo haría el usuario
+  await tester.ensureVisible(find.text('Entrar'));
+  await tester.pump();
   await tester.tap(find.text('Entrar'));
   await settle(tester);
 }

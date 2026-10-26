@@ -152,10 +152,13 @@ class _RegisterState extends ConsumerState<_Register> {
     try {
       final rows = [for (final id in _selected.keys) (memberId: id, decision: _decisions.contains(id))];
       final (count, decisions) = await ref.read(repoProvider).saveAttendees(widget.event.id, rows);
-      ref.read(eventsVersionProvider.notifier).bump();
       showAppSnack('Asistencia guardada · ${Fmt.plural(count, 'persona', 'personas')}, '
           '${Fmt.plural(decisions, 'decisión de fe', 'decisiones de fe')}.');
+      // Salir ANTES de refrescar: esta pantalla escucha eventProvider, y al
+      // refrescar se reconstruye (mounted = false) y ya no podría volver.
+      final events = ref.read(eventsVersionProvider.notifier);
       if (mounted) context.pop();
+      events.bump();
     } catch (e) {
       showAppSnack(ApiException.from(e).message, error: true);
     } finally {

@@ -152,14 +152,18 @@ class _EventFormState extends ConsumerState<_EventForm> {
     };
     try {
       final saved = await ref.read(repoProvider).saveEvent(widget.event?.id, data);
-      ref.read(eventsVersionProvider.notifier).bump();
       showAppSnack(_editing ? 'Evento actualizado.' : 'Evento creado.');
-      if (!mounted) return;
-      if (_editing) {
-        context.pop();
-      } else {
-        context.pushReplacement('/evento/${saved.id}', extra: 'Eventos');
+      // Navegar ANTES de refrescar: si el formulario se abrió sin el evento
+      // precargado escucha eventProvider y al refrescar se reconstruye.
+      final events = ref.read(eventsVersionProvider.notifier);
+      if (mounted) {
+        if (_editing) {
+          context.pop();
+        } else {
+          context.pushReplacement('/evento/${saved.id}', extra: 'Eventos');
+        }
       }
+      events.bump();
     } catch (e) {
       setState(() => _error = ApiException.from(e).message);
     } finally {
