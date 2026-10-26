@@ -133,20 +133,25 @@ class _TabButton extends StatelessWidget {
       child: InkResponse(
         onTap: onTap,
         radius: 36,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Ic(tab.icon, size: 26, color: color),
-            const SizedBox(height: 2),
-            Text(
-              tab.label,
-              style: AppText.base(
-                size: 13,
-                color: color,
-                weight: active ? FontWeight.w600 : FontWeight.w400,
+        // scaleDown: con texto grande (accesibilidad) la pestaña se reduce en vez de desbordarse
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Ic(tab.icon, size: 26, color: color),
+              const SizedBox(height: 2),
+              Text(
+                tab.label,
+                maxLines: 1,
+                style: AppText.base(
+                  size: 13,
+                  color: color,
+                  weight: active ? FontWeight.w600 : FontWeight.w400,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

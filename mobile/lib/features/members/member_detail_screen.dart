@@ -161,11 +161,17 @@ class _ActionTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppRadii.md),
           child: SizedBox(
             height: 68,
-            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Ic(icon, size: 26, color: AppColors.cyan),
-              const SizedBox(height: 4),
-              Text(label, style: AppText.base(size: 15, color: AppColors.cyan700)),
-            ]),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Ic(icon, size: 26, color: AppColors.cyan),
+                  const SizedBox(height: 4),
+                  Text(label, maxLines: 1, style: AppText.base(size: 15, color: AppColors.cyan700)),
+                ]),
+              ),
+            ),
           ),
         ),
       ),

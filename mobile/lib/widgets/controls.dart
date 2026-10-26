@@ -154,7 +154,12 @@ class SecondaryButton extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 if (icon != null) ...[Ic(icon!, size: 20, color: accent ? AppColors.cyan700 : AppColors.cyan), const SizedBox(width: 8)],
-                Text(label, style: AppText.base(size: accent ? 17 : 16, weight: accent ? FontWeight.w600 : FontWeight.w400, color: fg)),
+                Flexible(
+                  child: Text(label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.base(size: accent ? 17 : 16, weight: accent ? FontWeight.w600 : FontWeight.w400, color: fg)),
+                ),
               ],
             ),
           ),

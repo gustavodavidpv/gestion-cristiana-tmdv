@@ -231,7 +231,7 @@ class KeyValueRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.baseline,
         textBaseline: TextBaseline.alphabetic,
         children: [
-          Text(k, style: AppText.base(size: 16, color: AppColors.neutral800)),
+          Flexible(child: Text(k, style: AppText.base(size: 16, color: AppColors.neutral800))),
           const SizedBox(width: 16),
           Expanded(
             child: Text(v, textAlign: TextAlign.right, style: AppText.base(size: 16, weight: FontWeight.w600)),

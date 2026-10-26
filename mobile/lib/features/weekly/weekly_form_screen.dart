@@ -145,7 +145,14 @@ class _WeeklyFormScreenState extends ConsumerState<WeeklyFormScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   child: Row(children: [
                     Expanded(child: Text('Registrado por', style: AppText.base(size: 15, color: AppColors.neutral800))),
-                    Text(user == null ? '—' : '${user.firstName} · ${user.roleName}', style: AppText.base(size: 15, weight: FontWeight.w600)),
+                    const SizedBox(width: 12),
+                    Flexible(
+                      child: Text(user == null ? '—' : '${user.firstName} · ${user.roleName}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.right,
+                          style: AppText.base(size: 15, weight: FontWeight.w600)),
+                    ),
                   ]),
                 ),
                 if (_error != null) Text(_error!, style: AppText.base(size: 15, color: AppColors.magenta700)),
