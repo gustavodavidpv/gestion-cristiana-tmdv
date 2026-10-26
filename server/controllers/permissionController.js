@@ -8,6 +8,20 @@
  */
 const { RolePermission, Role, sequelize } = require('../models');
 const { MODULES, DEFAULTS } = require('../config/permissions');
+const { isMssql, qt } = require('../config/database');
+
+// UPSERT por dialecto: Postgres usa ON CONFLICT, SQL Server usa MERGE
+const UPSERT_PERMISSION_SQL = isMssql
+  ? `MERGE ${qt('role_permissions')} WITH (HOLDLOCK) AS t
+     USING (SELECT $1 AS role_id, $2 AS module, $3 AS action) AS s
+       ON t.role_id = s.role_id AND t.module = s.module AND t.action = s.action
+     WHEN MATCHED THEN UPDATE SET allowed = $4, updated_at = SYSDATETIMEOFFSET()
+     WHEN NOT MATCHED THEN INSERT (role_id, module, action, allowed, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, SYSDATETIMEOFFSET(), SYSDATETIMEOFFSET());`
+  : `INSERT INTO role_permissions (role_id, module, action, allowed, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, NOW(), NOW())
+     ON CONFLICT (role_id, module, action)
+     DO UPDATE SET allowed = $4, updated_at = NOW()`;
 
 const permissionController = {
   /**
@@ -61,7 +75,7 @@ const permissionController = {
    * PUT /api/permissions
    * Actualiza permisos en bloque.
    * Body: { permissions: { [roleId]: { [module]: { [action]: bool } } } }
-   * Usa UPSERT (INSERT ... ON CONFLICT DO UPDATE) dentro de una transacción.
+   * Usa UPSERT (ON CONFLICT en Postgres, MERGE en SQL Server) dentro de una transacción.
    */
   async updateAll(req, res) {
     const transaction = await sequelize.transaction();
@@ -93,10 +107,7 @@ const permissionController = {
 
             // UPSERT: crear o actualizar el permiso
             await sequelize.query(
-              `INSERT INTO role_permissions (role_id, module, action, allowed, created_at, updated_at)
-               VALUES ($1, $2, $3, $4, NOW(), NOW())
-               ON CONFLICT (role_id, module, action)
-               DO UPDATE SET allowed = $4, updated_at = NOW()`,
+              UPSERT_PERMISSION_SQL,
               { bind: [roleIdInt, moduleKey, action, !!allowed], transaction }
             );
             updated++;

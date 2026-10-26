@@ -6,7 +6,7 @@
  * se usan los DEFAULT_LEVELS de config/bibleClub.js.
  */
 const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/database');
+const { sequelize, isMssql } = require('../config/database');
 
 const BibleClubGroup = sequelize.define('BibleClubGroup', {
   id: {
@@ -35,9 +35,21 @@ const BibleClubGroup = sequelize.define('BibleClubGroup', {
     comment: 'Maestro o responsable del grupo',
   },
   levels: {
-    type: DataTypes.JSONB,
     allowNull: true,
     comment: 'Niveles personalizados [{name, min_points, color}]; null = niveles por defecto',
+    // SQL Server no tiene JSONB: se guarda como texto JSON y se convierte al leer/escribir
+    ...(isMssql
+      ? {
+        type: DataTypes.TEXT,
+        get() {
+          const raw = this.getDataValue('levels');
+          return typeof raw === 'string' ? JSON.parse(raw) : raw;
+        },
+        set(value) {
+          this.setDataValue('levels', value == null ? null : JSON.stringify(value));
+        },
+      }
+      : { type: DataTypes.JSONB }),
   },
   is_active: {
     type: DataTypes.BOOLEAN,

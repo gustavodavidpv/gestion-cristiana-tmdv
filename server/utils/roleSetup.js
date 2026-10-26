@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const { Role, RolePermission } = require('../models');
+const { isMssql } = require('../config/database');
 const { MODULES, DEFAULTS } = require('../config/permissions');
 const { SYSTEM_ROLES } = require('../config/roles');
 
@@ -36,6 +37,19 @@ const initializeRolePermissionsForRole = async (role, options = {}) => {
   const rows = buildPermissionRows(role.id, defaults);
 
   if (!rows.length) return;
+
+  if (isMssql) {
+    // SQL Server no soporta ignoreDuplicates: insertar solo los que faltan
+    const existing = await RolePermission.findAll({
+      where: { role_id: role.id },
+      attributes: ['module', 'action'],
+      transaction,
+    });
+    const existingKeys = new Set(existing.map((p) => `${p.module}|${p.action}`));
+    const missing = rows.filter((row) => !existingKeys.has(`${row.module}|${row.action}`));
+    if (missing.length) await RolePermission.bulkCreate(missing, { transaction });
+    return;
+  }
 
   await RolePermission.bulkCreate(rows, {
     ignoreDuplicates: true,

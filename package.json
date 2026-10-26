@@ -5,6 +5,7 @@
   "scripts": {
     "server": "cd server && npm run dev",
     "client": "cd client && npm start",
+    "mobile": "cd mobile && flutter run",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "install:all": "npm install && cd server && npm install && cd ../client && npm install",
     "db:migrate": "cd server && npm run migrate",

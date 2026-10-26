@@ -1,6 +1,7 @@
 const { User, Role, Church } = require('../models');
 const { Op } = require('sequelize');
 const { isSuperAdmin } = require('../middleware/auth');
+const { iLike } = require('../config/database');
 
 const userController = {
   // GET /api/users
@@ -12,8 +13,8 @@ const userController = {
       const where = {};
       if (search) {
         where[Op.or] = [
-          { full_name: { [Op.iLike]: `%${search}%` } },
-          { email: { [Op.iLike]: `%${search}%` } },
+          { full_name: { [iLike]: `%${search}%` } },
+          { email: { [iLike]: `%${search}%` } },
         ];
       }
       if (role_id) where.role_id = role_id;

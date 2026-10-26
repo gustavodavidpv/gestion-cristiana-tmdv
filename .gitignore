@@ -37,3 +37,6 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# Backups de la base de datos (contienen datos personales, NUNCA subir a Git)
+backups/
