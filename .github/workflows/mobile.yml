@@ -34,5 +34,10 @@ jobs:
           cache: true
 
       - run: flutter pub get
+      # Roboto (material_fonts): las pruebas la cargan para medir textos como en
+      # un teléfono real. El SDK restaurado de la caché puede no traerla.
+      - run: |
+          flutter precache --universal
+          test -f "$FLUTTER_ROOT/bin/cache/artifacts/material_fonts/roboto-regular.ttf"
       - run: flutter analyze
       - run: flutter test
