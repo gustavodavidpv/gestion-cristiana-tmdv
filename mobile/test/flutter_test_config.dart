@@ -11,9 +11,13 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   AppText.useGoogleFonts = false;
   final sdk = _flutterRoot();
   final dir = '$sdk/bin/cache/artifacts/material_fonts';
-  final files = [
-    for (final f in ['roboto-regular.ttf', 'roboto-medium.ttf', 'roboto-bold.ttf', 'roboto-italic.ttf']) File('$dir/$f'),
-  ].where((file) => file.existsSync()).toList();
+  // Los nombres cambian de mayúsculas según la plataforma (Roboto-Regular.ttf
+  // en Linux, roboto-regular.ttf en Windows): se comparan en minúsculas.
+  const wanted = {'roboto-regular.ttf', 'roboto-medium.ttf', 'roboto-bold.ttf', 'roboto-italic.ttf'};
+  final fontsDir = Directory(dir);
+  final files = fontsDir.existsSync()
+      ? fontsDir.listSync().whereType<File>().where((f) => wanted.contains(f.uri.pathSegments.last.toLowerCase())).toList()
+      : <File>[];
   // Sin Roboto las pruebas de desbordes medirían con la fuente cuadrada y
   // fallarían por motivos falsos: mejor detenerse con la causa real.
   if (sdk == null || files.isEmpty) {
