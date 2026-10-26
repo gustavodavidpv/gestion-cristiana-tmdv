@@ -35,9 +35,11 @@ jobs:
 
       - run: flutter pub get
       # Roboto (material_fonts): las pruebas la cargan para medir textos como en
-      # un teléfono real. El SDK restaurado de la caché puede no traerla.
+      # un teléfono real. La caché del CI puede dejar la carpeta marcada como
+      # al día pero sin los .ttf, así que se fuerza la descarga.
       - run: |
-          flutter precache --universal
+          flutter precache --universal --force
+          ls "$FLUTTER_ROOT/bin/cache/artifacts/material_fonts" || true
           test -f "$FLUTTER_ROOT/bin/cache/artifacts/material_fonts/roboto-regular.ttf"
       - run: flutter analyze
       - run: flutter test
