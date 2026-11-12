@@ -22,6 +22,7 @@ import { toast } from 'react-toastify';
 import ChurchSelector from '../components/layout/ChurchSelector';
 import { DEFAULT_LEVELS, POINT_REASONS, QUICK_POINTS, TYPE_LABELS } from '../config/bibleClub';
 import ScanSheetDialog from '../components/bibleClub/ScanSheetDialog';
+import StoreDialog, { ItemPhoto } from '../components/bibleClub/StoreDialog';
 import {
   Box, Paper, Typography, Button, TextField, Select, MenuItem, FormControl,
   InputLabel, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
@@ -38,6 +39,7 @@ import {
   Close as CloseIcon, Remove as RemoveIcon, Clear as ClearIcon,
   MoreVert as MoreVertIcon, DocumentScanner as DocumentScannerIcon,
   PictureAsPdf as PictureAsPdfIcon, EmojiEvents as EmojiEventsIcon,
+  Storefront as StorefrontIcon, CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
 
 /** Offsets del shell de la app (barra superior fija + notch / barra de gestos) */
@@ -137,6 +139,8 @@ const BibleClubContent = ({ churchId, backButton }) => {
   const [draftRestored, setDraftRestored] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [storeOpen, setStoreOpen] = useState(false);
+  const [storeItems, setStoreItems] = useState([]); // catálogo para elegir en los canjes
 
   const params = useMemo(() => (churchId ? { church_id: churchId } : {}), [churchId]);
 
@@ -176,6 +180,16 @@ const BibleClubContent = ({ churchId, backButton }) => {
       setLoading(false);
     }
   }, [params, selectedGroup, showInactive]);
+
+  /** Catálogo de la tiendita (solo artículos visibles) para el diálogo de canje */
+  const loadStoreItems = useCallback(async () => {
+    try {
+      const { data } = await api.get('/bible-club/store', { params });
+      setStoreItems((data.items || []).filter((i) => i.is_active));
+    } catch {
+      setStoreItems([]); // sin catálogo se puede seguir canjeando con texto libre
+    }
+  }, [params]);
 
   useEffect(() => { loadGroups(); }, [loadGroups]);
   useEffect(() => { loadStudents(); }, [loadStudents]);
@@ -464,7 +478,21 @@ const BibleClubContent = ({ churchId, backButton }) => {
     setActionSheet(null);
     setRedeemDialog({
       student,
-      form: { item: '', points: '', date: new Date().toISOString().split('T')[0], notes: '' },
+      form: { item: '', item_id: null, points: '', date: new Date().toISOString().split('T')[0], notes: '' },
+    });
+    loadStoreItems(); // inventario al día
+  };
+
+  /** Elegir (o soltar) un artículo de la tiendita: llena nombre y costo */
+  const pickStoreItem = (item) => {
+    setRedeemDialog((d) => {
+      const same = d.form.item_id === item.id;
+      return {
+        ...d,
+        form: same
+          ? { ...d.form, item_id: null, item: '', points: '' }
+          : { ...d.form, item_id: item.id, item: item.name, points: String(item.points_cost) },
+      };
     });
   };
 
@@ -491,12 +519,14 @@ const BibleClubContent = ({ churchId, backButton }) => {
           type: 'redeem',
           reason: 'Canje de artículo',
           item: form.item.trim() || 'Artículo canjeado',
+          item_id: form.item_id || undefined,
           notes: form.notes || null,
         }],
       });
       toast.success('Canje registrado');
       setRedeemDialog(null);
       loadStudents();
+      if (form.item_id) loadStoreItems();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Error al registrar el canje');
     }
@@ -564,6 +594,10 @@ const BibleClubContent = ({ churchId, backButton }) => {
             </IconButton>
           ) : (
             <Stack direction="row" spacing={1}>
+              <Button variant="outlined" color="warning" startIcon={<StorefrontIcon />}
+                onClick={() => setStoreOpen(true)}>
+                Tiendita
+              </Button>
               <Button variant="outlined" color="success" startIcon={<EmojiEventsIcon />}
                 onClick={downloadStandingsPdf} disabled={!selectedGroup || downloadingPdf}>
                 {downloadingPdf ? 'Generando…' : 'Tabla de posiciones'}
@@ -890,6 +924,13 @@ const BibleClubContent = ({ churchId, backButton }) => {
           </Box>
         </Box>
         <List sx={{ mt: 1 }}>
+          <ListItemButton onClick={() => { setGroupMenu(false); setStoreOpen(true); }} sx={{ py: 1.5 }}>
+            <ListItemIcon><StorefrontIcon color="warning" /></ListItemIcon>
+            <ListItemText
+              primary="Tiendita"
+              secondary="Premios con foto y enlace para compartir con los muchachos"
+            />
+          </ListItemButton>
           <ListItemButton onClick={downloadStandingsPdf} disabled={!selectedGroup || downloadingPdf} sx={{ py: 1.5 }}>
             <ListItemIcon><PictureAsPdfIcon color="success" /></ListItemIcon>
             <ListItemText
@@ -1090,6 +1131,17 @@ const BibleClubContent = ({ churchId, backButton }) => {
         onApply={applyScannedPoints}
       />
 
+      <StoreDialog
+        open={storeOpen}
+        onClose={() => setStoreOpen(false)}
+        params={params}
+        isMobile={isMobile}
+        canCreate={canCreate}
+        canEdit={canEdit}
+        canDelete={canDelete}
+        onChanged={loadStoreItems}
+      />
+
       {/* ===== DIÁLOGO: CANJE ===== */}
       <Dialog open={!!redeemDialog} onClose={() => setRedeemDialog(null)} maxWidth="xs" fullWidth fullScreen={isMobile}>
         {redeemDialog && (
@@ -1106,12 +1158,55 @@ const BibleClubContent = ({ churchId, backButton }) => {
                 {redeemDialog.student.full_name} tiene <strong>{redeemDialog.student.balance}</strong> puntos disponibles.
                 El canje descuenta del saldo pero no baja el nivel alcanzado.
               </Alert>
+              {storeItems.length > 0 && (
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Elegir de la tiendita</Typography>
+                  <Box sx={{
+                    display: 'flex', gap: 1, overflowX: 'auto', pb: 1, mx: -0.5, px: 0.5,
+                    '&::-webkit-scrollbar': { height: 6 },
+                  }}>
+                    {storeItems.map((it) => {
+                      const selected = redeemDialog.form.item_id === it.id;
+                      const affordable = redeemDialog.student.balance >= it.points_cost;
+                      return (
+                        <Paper key={it.id} variant="outlined" component="button" type="button"
+                          disabled={!it.available}
+                          onClick={() => pickStoreItem(it)}
+                          aria-pressed={selected}
+                          sx={{
+                            flex: '0 0 112px', p: 0, overflow: 'hidden', textAlign: 'left',
+                            cursor: it.available ? 'pointer' : 'not-allowed',
+                            font: 'inherit', bgcolor: 'background.paper', position: 'relative',
+                            borderWidth: 2, borderColor: selected ? 'warning.main' : 'divider',
+                            opacity: it.available ? 1 : 0.6,
+                          }}>
+                          <ItemPhoto src={it.image_url} alt={it.name} soldOut={!it.available} height={80} />
+                          {selected && (
+                            <CheckCircleIcon color="warning" sx={{ position: 'absolute', top: 4, right: 4, bgcolor: '#fff', borderRadius: '50%' }} />
+                          )}
+                          <Box sx={{ p: 0.75 }}>
+                            <Typography variant="caption" fontWeight={700} noWrap component="div">{it.name}</Typography>
+                            <Typography variant="caption" component="div"
+                              sx={{ color: affordable ? 'warning.dark' : 'text.disabled', fontWeight: 700 }}>
+                              {it.points_cost} pts{it.stock !== null && it.available ? ` · quedan ${it.stock}` : ''}
+                            </Typography>
+                          </Box>
+                        </Paper>
+                      );
+                    })}
+                  </Box>
+                  <Typography variant="caption" color="text.secondary">
+                    O escribe abajo otro artículo que no esté en la tiendita.
+                  </Typography>
+                </Box>
+              )}
               <Grid container spacing={2}>
                 <Grid item xs={12}>
                   <TextField fullWidth required size="small" label="Artículo canjeado"
                     placeholder="Ej: audífonos, Biblia de estudio"
                     value={redeemDialog.form.item}
-                    onChange={(e) => setRedeemDialog({ ...redeemDialog, form: { ...redeemDialog.form, item: e.target.value } })} />
+                    // Escribir a mano suelta el artículo del catálogo
+                    onChange={(e) => setRedeemDialog({ ...redeemDialog, form: { ...redeemDialog.form, item: e.target.value, item_id: null } })} />
                 </Grid>
                 <Grid item xs={6}>
                   <TextField fullWidth required size="small" type="number" inputMode="numeric" label="Puntos"

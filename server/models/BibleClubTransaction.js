@@ -55,6 +55,11 @@ const BibleClubTransaction = sequelize.define('BibleClubTransaction', {
     allowNull: true,
     comment: 'Artículo canjeado (solo en type = redeem)',
   },
+  item_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'Artículo de la tiendita canjeado (si se eligió del catálogo)',
+  },
   notes: {
     type: DataTypes.TEXT,
     allowNull: true,

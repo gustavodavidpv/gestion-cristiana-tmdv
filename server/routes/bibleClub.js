@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const bibleClubController = require('../controllers/bibleClubController');
+const storeController = require('../controllers/bibleClubStoreController');
 const { authenticate, authorizePermission } = require('../middleware/auth');
 
 router.use(authenticate);
@@ -26,5 +27,12 @@ router.get('/transactions', authorizePermission('bible_club', 'view'), bibleClub
 router.post('/transactions', authorizePermission('bible_club', 'create'), bibleClubController.createTransactions);
 router.put('/transactions/:id', authorizePermission('bible_club', 'edit'), bibleClubController.updateTransaction);
 router.delete('/transactions/:id', authorizePermission('bible_club', 'delete'), bibleClubController.deleteTransaction);
+
+// ===== Tiendita (catálogo de artículos canjeables) =====
+router.get('/store', authorizePermission('bible_club', 'view'), storeController.getStore);
+router.put('/store', authorizePermission('bible_club', 'edit'), storeController.updateStore);
+router.post('/store/items', authorizePermission('bible_club', 'create'), storeController.createItem);
+router.put('/store/items/:id', authorizePermission('bible_club', 'edit'), storeController.updateItem);
+router.delete('/store/items/:id', authorizePermission('bible_club', 'delete'), storeController.deleteItem);
 
 module.exports = router;

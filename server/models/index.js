@@ -19,6 +19,8 @@ const RolePermission = require('./RolePermission');
 const BibleClubGroup = require('./BibleClubGroup');
 const BibleClubStudent = require('./BibleClubStudent');
 const BibleClubTransaction = require('./BibleClubTransaction');
+const BibleClubItem = require('./BibleClubItem');
+const BibleClubStore = require('./BibleClubStore');
 
 // =============================================
 // ASOCIACIONES
@@ -173,6 +175,17 @@ BibleClubTransaction.belongsTo(BibleClubStudent, { foreignKey: 'student_id', as:
 User.hasMany(BibleClubTransaction, { foreignKey: 'created_by', as: 'bible_club_entries', constraints: false });
 BibleClubTransaction.belongsTo(User, { foreignKey: 'created_by', as: 'creator', constraints: false });
 
+// Tiendita: artículos canjeables y configuración de la página pública
+// (sin FK física: sync() las crea sin el schema "tmv" en SQL Server)
+Church.hasMany(BibleClubItem, { foreignKey: 'church_id', as: 'bible_club_items', constraints: false });
+BibleClubItem.belongsTo(Church, { foreignKey: 'church_id', as: 'church', constraints: false });
+Church.hasOne(BibleClubStore, { foreignKey: 'church_id', as: 'bible_club_store', constraints: false });
+BibleClubStore.belongsTo(Church, { foreignKey: 'church_id', as: 'church', constraints: false });
+
+// Sin FK: borrar un artículo no debe romper el historial de canjes
+BibleClubItem.hasMany(BibleClubTransaction, { foreignKey: 'item_id', as: 'redemptions', constraints: false });
+BibleClubTransaction.belongsTo(BibleClubItem, { foreignKey: 'item_id', as: 'store_item', constraints: false });
+
 // =============================================
 // PERMISOS DINÁMICOS POR ROL (NUEVO)
 // Cada rol tiene N permisos (module+action → allowed)
@@ -203,4 +216,6 @@ module.exports = {
   BibleClubGroup,
   BibleClubStudent,
   BibleClubTransaction,
+  BibleClubItem,
+  BibleClubStore,
 };

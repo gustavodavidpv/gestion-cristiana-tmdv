@@ -20,6 +20,7 @@
 const { sequelize } = require('../models');
 const { isMssql } = require('../config/database');
 const { ensureSystemRoles, ensureDefaultRolePermissions } = require('../utils/roleSetup');
+const { runSchemaUpgrades } = require('../utils/schemaUpgrades');
 
 const runMigrations = async () => {
   try {
@@ -508,6 +509,7 @@ const runMigrations = async () => {
     console.log('🔄 Sincronizando modelos con BD (modo seguro, sin alter)...');
     await sequelize.sync();
     console.log('✅ Sync completado.');
+    await runSchemaUpgrades();
 
     await ensureSystemRoles();
     await ensureDefaultRolePermissions();

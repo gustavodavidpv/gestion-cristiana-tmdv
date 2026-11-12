@@ -13,7 +13,7 @@
  */
 const { Op, fn, col, literal } = require('sequelize');
 const {
-  sequelize, BibleClubGroup, BibleClubStudent, BibleClubTransaction, Church, User,
+  sequelize, BibleClubGroup, BibleClubStudent, BibleClubTransaction, BibleClubItem, Church, User,
 } = require('../models');
 const { isSuperAdmin } = require('../middleware/auth');
 const { DEFAULT_LEVELS, POINT_REASONS, normalizeLevels, computeLevel } = require('../config/bibleClub');
@@ -479,14 +479,33 @@ const bibleClubController = {
         studentMap[s.id] = s;
       }
 
-      const rows = [];
-      for (const entry of entries) {
-        const points = parseInt(entry.points, 10);
-        if (!Number.isFinite(points) || points === 0) continue; // ignorar filas vacías
+      // Artículos de la tiendita elegidos en los canjes (opcional: item_id)
+      const itemIds = [...new Set(entries.map((e) => parseInt(e.item_id, 10)).filter(Boolean))];
+      const items = itemIds.length
+        ? await BibleClubItem.findAll({ where: { id: { [Op.in]: itemIds } } })
+        : [];
+      const itemMap = {};
+      for (const it of items) itemMap[it.id] = it;
 
-        const type = entry.type || (points < 0 ? 'redeem' : 'earn');
+      const rows = [];
+      const unitsByItem = {}; // unidades a descontar del inventario por artículo
+      for (const entry of entries) {
         const student = studentMap[parseInt(entry.student_id, 10)];
         if (!student) continue;
+
+        const itemId = parseInt(entry.item_id, 10) || null;
+        const storeItem = itemId ? itemMap[itemId] : null;
+        if (itemId && (!storeItem || storeItem.church_id !== student.church_id)) {
+          return res.status(400).json({ message: 'El artículo elegido no existe en la tiendita.' });
+        }
+
+        let points = parseInt(entry.points, 10);
+        // Canje desde el catálogo sin puntos explícitos: usa el costo del artículo
+        if (storeItem && (!Number.isFinite(points) || points === 0)) points = storeItem.points_cost;
+        if (!Number.isFinite(points) || points === 0) continue; // ignorar filas vacías
+
+        const type = storeItem ? 'redeem' : (entry.type || (points < 0 ? 'redeem' : 'earn'));
+        if (storeItem) unitsByItem[storeItem.id] = (unitsByItem[storeItem.id] || 0) + 1;
 
         rows.push({
           student_id: student.id,
@@ -496,7 +515,8 @@ const bibleClubController = {
           points: type === 'redeem' ? -Math.abs(points) : points,
           activity_date,
           reason: entry.reason || null,
-          item: entry.item || null,
+          item: entry.item || (storeItem ? storeItem.name : null),
+          item_id: storeItem ? storeItem.id : null,
           notes: entry.notes || null,
           created_by: req.user.id,
         });
@@ -506,7 +526,32 @@ const bibleClubController = {
         return res.status(400).json({ message: 'No hay movimientos con puntos válidos.' });
       }
 
-      const created = await BibleClubTransaction.bulkCreate(rows);
+      // Descontar inventario y registrar en una sola transacción. El UPDATE
+      // condicional (stock >= unidades) evita vender más de lo que hay aunque
+      // dos maestros canjeen el último artículo al mismo tiempo.
+      let created;
+      try {
+        created = await sequelize.transaction(async (t) => {
+          for (const [id, units] of Object.entries(unitsByItem)) {
+            const it = itemMap[id];
+            if (it.stock === null) continue; // sin control de inventario
+            const [affected] = await BibleClubItem.update(
+              { stock: sequelize.literal(`stock - ${units}`) },
+              { where: { id: it.id, stock: { [Op.gte]: units } }, transaction: t },
+            );
+            if (!affected) {
+              const err = new Error(`"${it.name}" está agotado o no quedan suficientes unidades.`);
+              err.status = 409;
+              throw err;
+            }
+          }
+          return BibleClubTransaction.bulkCreate(rows, { transaction: t });
+        });
+      } catch (stockError) {
+        if (stockError.status === 409) return res.status(409).json({ message: stockError.message });
+        throw stockError;
+      }
+
       res.status(201).json({
         message: `${created.length} movimiento(s) registrado(s).`,
         transactions: created,
@@ -600,7 +645,16 @@ const bibleClubController = {
       if (!tx) return res.status(404).json({ message: 'Movimiento no encontrado.' });
       if (!canAccess(req, tx)) return res.status(403).json({ message: 'No tienes acceso a este movimiento.' });
 
-      await tx.destroy();
+      await sequelize.transaction(async (t) => {
+        await tx.destroy({ transaction: t });
+        // Si era un canje de la tiendita, la unidad vuelve al inventario
+        if (tx.type === 'redeem' && tx.item_id) {
+          await BibleClubItem.update(
+            { stock: sequelize.literal('stock + 1') },
+            { where: { id: tx.item_id, stock: { [Op.ne]: null } }, transaction: t },
+          );
+        }
+      });
       res.json({ message: 'Movimiento eliminado.' });
     } catch (error) {
       res.status(500).json({ message: 'Error al eliminar movimiento.', error: error.message });
@@ -609,3 +663,7 @@ const bibleClubController = {
 };
 
 module.exports = bibleClubController;
+// Compartidos con la tiendita (bibleClubStoreController)
+module.exports.resolveChurchId = resolveChurchId;
+module.exports.canAccess = canAccess;
+module.exports.buildStandings = buildStandings;

@@ -25,7 +25,8 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
-      if (window.location.pathname !== '/login') {
+      // La tiendita pública no necesita sesión: nunca mandar al login desde ahí
+      if (window.location.pathname !== '/login' && !window.location.pathname.startsWith('/tienda/')) {
         window.location.href = '/login';
       }
     }

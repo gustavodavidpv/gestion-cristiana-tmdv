@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Box, CircularProgress, Typography, useMediaQuery, useTheme } from '@mui/material';
 import { useAuth } from './context/AuthContext';
 import './styles/index.css';
@@ -21,6 +21,7 @@ import Branding from './pages/Branding';
 import Notifications from './pages/Notifications';
 import Permissions from './pages/Permissions';
 import Roles from './pages/Roles';
+import PublicStore from './pages/PublicStore';
 
 const DRAWER_WIDTH = 260;
 
@@ -47,6 +48,16 @@ function App() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
+  const location = useLocation();
+
+  // Página pública de la tiendita: sin sesión, sin menú y sin esperar al login
+  if (location.pathname.startsWith('/tienda/')) {
+    return (
+      <Routes>
+        <Route path="/tienda/:code" element={<PublicStore />} />
+      </Routes>
+    );
+  }
 
   if (loading) {
     return (
